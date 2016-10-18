@@ -1,0 +1,41 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/core/aux_/wiring
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+channels.hpp
+file
+
+
+
+
+2009-11-02T14:31:20.000000Z
+147ce03aafe2a888c22b489edf5fe9f0
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

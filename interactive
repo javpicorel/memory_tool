@@ -1,0 +1,342 @@
+#!/bin/bash
+
+###########
+# Useful functions
+###########
+log() {
+  echo $1
+}
+
+###########
+# Find/define SIMFLEX_HOME
+###########
+
+#if [[ $SIMFLEX_HOME == "" ]] ; then
+#  if [[ -f regress_workarea ]] ; then
+#    SIMFLEX_HOME=`pwd`
+#  else
+#    echo "Must set SIMFLEX_HOME environment variable"
+#    exit
+#  fi
+#fi
+
+
+###########
+# Constants
+###########
+
+USER=`whoami`
+#CHECKOUT_DIR=$SIMFLEX_HOME
+CHECKOUT_DIR=`pwd`
+ORIGNAL_WD=`pwd`
+
+AFS_BASE_DIR=/afs/scotch.ece.cmu.edu/project/scaffold/regress
+CKPT_BASE=/afs/scotch.ece.cmu.edu/project/checkpoints
+FXPT_BASE=/afs/scotch.ece.cmu.edu/project/checkpoints
+
+###########
+# Check Parameters
+###########
+
+USER_CFG=interactive
+TRACE_REQUESTED=0
+USE_SIMFLEX=1
+USE_SIMICS2=0
+USE_SIMICS3=1
+CUSTOM_REQUESTED=0
+SIMICS_PARAMS=
+	SIMICS_MODE="-stall"
+	MA=0
+	CKPT=0
+        FXPT=0
+	CKPT_NAME=
+        FXPT_NAME=0
+	while [[ ${1:0:1} == "-" ]] ; do
+	  case $1 in
+	    "-trace" )
+	      TRACE_REQUESTED=1
+	      TRACE_CYCLE=$2
+	      shift
+	      shift
+	      ;;
+	    "-cfg" )
+	      USER_CFG=$2
+	      shift
+	      shift
+	      ;;
+	    "-noflexus" )
+	      USE_SIMFLEX=0
+	      shift
+	      ;;
+	    "-nosimics2" )
+	      USE_SIMICS2=0
+	      shift
+	      ;;
+	    "-simics3" )
+	      USE_SIMICS3=1
+	      USE_SIMICS2=0
+	      shift
+	      ;;
+	    "-ma" )
+	      SIMICS_MODE="-ma" 
+	      MA=1
+	      shift
+	      ;;
+	    "-nowin" )
+	      SIMICS_PARAMS="$SIMICS_PARAMS -no-win" 
+	      shift
+	      ;;
+	    "-custom" )
+	      CUSTOM_REQUESTED=1
+	      CUSTOM_SCRIPT=$2
+	      shift
+	      shift
+	      ;;
+	    "-ckpt" )
+	      CKPT=1
+	      CKPT_NAME=$2
+	      shift
+	      shift
+	      ;;
+            "-fxpt" )
+              FXPT=1
+              FXPT_NAME=$2
+              shift
+              shift
+              ;;
+	    * )
+	      echo "Unknown option $1"
+	      shift
+	      ;;
+	    esac
+	done
+
+
+
+	if [[ $# -eq 0 ]] ; then
+	  echo "interactive [options] <simulator> <job-spec>"
+	  exit
+	fi
+
+	if [[ $USE_SIMFLEX -eq 1 ]] ; then
+	  TARGET=$1
+	  shift
+	  SIMULATOR=${TARGET%%-*}
+	  DBG=${TARGET#$SIMULATOR-}
+	else
+	  SIMULATOR="noscaffold"
+	  DBG=""
+	fi
+	JOB_SPEC=$1
+	RUN=$USER-$USER_CFG
+	JOB_DIR=/home/regress/$RUN
+
+	JOB_SPEC_DIR=$AFS_BASE_DIR/job-specs/$JOB_SPEC
+	GLOBAL_SPEC_DIR=$AFS_BASE_DIR/job-specs/global-interactive
+	USER_SPEC_DIR=$AFS_BASE_DIR/user-specs/$USER/$USER_CFG
+
+	SIMICS_PARAMS="$SIMICS_PARAMS $SIMICS_MODE"
+
+	if [[ $USE_SIMICS3 -eq 1 ]] ; then
+	    SIMICS_BASE=/afs/scotch/project/simics/simics-3.0.22
+	    SIMICS_TYPE=
+	elif [[ $USE_SIMICS2 -eq 1 ]] ; then
+	    SIMICS_BASE=/afs/scotch/project/simics/simics-2.2.19
+		SIMICS_TYPE=
+	elif [[ $USE_SIMICS2 -eq 0 ]] ; then
+      SIMICS_BASE=/afs/scotch/project/simics/simics
+	    SIMICS_TYPE=$(< $JOB_SPEC_DIR/simics_distro)
+	fi
+
+	if [[ $TARGET == "" && $USE_SIMFLEX -eq 1 ]] ; then
+
+	  echo "Must specify a built simulator to run interactively"
+	  exit
+	fi
+
+	if [[ $JOB_SPEC == "" ]] ; then
+	  echo "Must specify a job-spec to start"
+	  exit
+	fi
+
+	if [[ ! -d $JOB_SPEC_DIR ]] ; then
+	  echo "$JOB_SPEC is not a valid job-spec"
+	  exit
+	fi
+
+
+	log "Starting interactive run of $JOB_SPEC with $TARGET in $JOB_DIR"
+
+	###########
+	# Check Build
+	###########
+
+	if [[ $USE_SIMFLEX -eq 1 ]] ; then
+	  LIB_COUNT=`ls -1 $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG* | wc -l`
+	  if [[ $LIB_COUNT -gt 1 ]] ; then
+	    log "More than one simulator binary is built.  Don't know which one to use."
+	  fi
+
+	  LIBRARY=`ls $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG*`
+	  if [[ $? -ne 0 ]] ; then
+	    log "No $SIMULATOR binary found"
+	    exit
+	  fi
+	fi
+
+	##########
+	# Prepare JOB_DIR
+	##########
+	rm -rf $JOB_DIR
+	mkdir -p $JOB_DIR
+
+	cp -rs $SIMICS_BASE/$SIMICS_TYPE $JOB_DIR/simics
+	rm -rf $JOB_DIR/simics/x86-linux/bin
+	cp -r $SIMICS_BASE/$SIMICS_TYPE/x86-linux/bin $JOB_DIR/simics/x86-linux/bin
+	rm -f $JOB_DIR/simics/x86-linux/lib/libflexus*
+
+	##########
+	# Place built binary and other files in JOB_DIR
+	##########
+	if [[ $USE_SIMFLEX -eq 1 ]] ; then
+	   cp $LIBRARY $JOB_DIR/simics/x86-linux/lib
+	fi
+	mkdir -p $JOB_DIR/exec
+	if [[ $USE_SIMFLEX -eq 1 ]] ; then
+	   cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.rom $JOB_DIR/exec
+	   cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.topology $JOB_DIR/exec
+	fi
+	cp -rL $GLOBAL_SPEC_DIR/wd/* $JOB_DIR/exec
+	cp -rL $JOB_SPEC_DIR/wd/* $JOB_DIR/exec
+	cp -rL $USER_SPEC_DIR/* $JOB_DIR/exec
+
+	perl -pi -e 's/scaffold/flexus/g' $JOB_DIR/exec/*.simics
+
+	# cheap hack to remove all scaffold-based commands if noscaffold is used
+	if [[ $USE_SIMFLEX -eq 0 ]] ; then
+	   mv $JOB_DIR/exec/start{.noscaffold,}.simics
+	fi
+
+	# cheap hack to use simics scripts (diff checkpoints)
+	## assumes first line of job-preload is the read-configuration line!
+#	if [[ $USE_SIMICS2 -eq 1 ]] ; then
+	  cat $JOB_SPEC_DIR/wd/job-preload.simics > $JOB_DIR/exec/job-preload.simics
+
+	  # remove the $1 from go.sh
+	  sed -e "s/\$1/$SIMICS_PARAMS/" < $JOB_DIR/exec/go.sh > $JOB_DIR/exec/tmp
+	  mv $JOB_DIR/exec/{tmp,go.sh}
+	  chmod a+x $JOB_DIR/exec/go.sh
+
+	  # make a new 'simics' file
+	  echo '#!/bin/sh' > $JOB_DIR/exec/simics
+	  echo 'exec ./go.sh' >> $JOB_DIR/exec/simics
+
+	  # add baseline-postload.simics to start.simics file
+	  #sed -e "s/global-postload.simics/global-postload.simics\nrun-command-file baseline-postload.simics/" < $JOB_DIR/exec/start.simics > $JOB_DIR/exec/tmp
+	  #mv $JOB_DIR/exec/{tmp,start.simics}
+
+	  # the syntax has changed for scaffold.add-debug to add-debug-cfg
+	  sed -e "s/add-debug/add-debug-cfg/" < $JOB_DIR/exec/global-postload.simics > $JOB_DIR/exec/tmp
+	  mv $JOB_DIR/exec/{tmp,global-postload.simics}
+#	fi
+
+	if [[ $MA -eq 1 ]] ; then
+	 # remove the "run 10000" from the job-preload, if present
+	 mv $JOB_DIR/exec/job-preload.simics $JOB_DIR/exec/job-preload.simics.temp
+	 sed -e 's/run 10000//'  $JOB_DIR/exec/job-preload.simics.temp >  $JOB_DIR/exec/job-preload.simics
+	fi
+
+	if [[ $CUSTOM_REQUESTED -eq 1 ]] ; then
+	  cp $CUSTOM_SCRIPT $JOB_DIR/exec
+	  echo "echo \"installing custom script\"" >> $JOB_DIR/exec/start.simics
+  echo "run-command-file $CUSTOM_SCRIPT" >> $JOB_DIR/exec/start.simics
+fi
+
+############
+# Handle Checkpoint Setup
+############
+if [[ $CKPT -eq 1 ]] ; then
+  if [[ -x $CKPT_BASE/$CKPT_NAME ]] ; then
+    # The checkpoint setup script exists.  Run it, passing $JOB_DIR
+    $CKPT_BASE/$CKPT_NAME $JOB_DIR
+
+    # Remove leading 0 from checkpoint file names with 3 digits
+    pushd $JOB_DIR/exec/ckpt-*
+    for FILE in 0[0-9][0-9]* ; do
+      mv $FILE ${FILE:1}
+    done
+    popd
+
+
+  else 
+    log "Aborting - No checkpoint setup script $CKPT_BASE/$CKPT_NAME was found" 
+    exit
+  fi
+fi
+
+##########
+# Handle Flexpoint Setup
+##########
+if [[ $FXPT -eq 1 ]]; then 
+
+  FLEX_STATE=$FXPT_BASE/$FXPT_NAME/flexstate.tar.gz
+  FXPT=`dirname $FXPT_NAME`
+  STATE_IN=flex_state_in
+
+  if [[ -r $FLEX_STATE ]];  then
+    # Untar the flexpoint
+    mkdir -p $JOB_DIR/exec/flex_state_in
+    pushd $JOB_DIR/exec/flex_state_in
+    tar zxf $FLEX_STATE
+    popd
+
+    # Now munge the user-postload.simics file to load our flexpoint
+    echo "flexus.load-state \"$STATE_IN\"" >> $JOB_DIR/exec/user-postload.simics
+
+    # And finally change the configuration to read the flexpoint configuration
+    pushd $JOB_DIR/exec
+    sed -e  "/read-configuration/d" job-preload.simics > tmp
+    sed -e  "/run/d" tmp > tmp2
+    echo "read-configuration \"$FXPT_BASE/$FXPT/simics/`basename $FXPT`\"" >> tmp2
+    mv tmp2 job-preload.simics
+    popd
+
+  else 
+    log "Aborting - flexpoint not found in $FLEX_STATE"
+    log "Try formatting like this: -fxpt baseline/phase_XXX/flexpoint_XXX"
+    exit
+  fi
+fi
+ 
+
+##########
+# Write load.simics script
+##########
+if [[ $USE_SIMFLEX -eq 1 ]] ; then
+   TEMP1=${LIBRARY##*lib}
+   TEMP2=${TEMP1%.so}
+   MODULE=${TEMP2//_/-}
+   echo "load-module $MODULE" > $JOB_DIR/exec/load.simics
+fi
+
+###########
+# For trace jobs, enable tracing
+###########
+if [[ $TRACE_REQUESTED -eq 1 ]] ; then
+  log "Enabling tracing at $TRACE_CYCLE (uses interactive-trace-debug.cfg)"
+  sed -e "s/xxBEGIN_CYCLE_COUNTxx/$TRACE_CYCLE/" < $JOB_DIR/exec/interactive-trace-debug.cfg > $JOB_DIR/exec/debug.cfg
+fi
+
+
+
+############
+# Start job
+############
+log "Launching job"
+cd $JOB_DIR/exec
+./simics
+
+##########
+# Clean Exit
+##########
+cd $ORIGINAL_WD

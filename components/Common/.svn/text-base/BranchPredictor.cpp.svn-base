@@ -1,0 +1,1505 @@
+// DO-NOT-REMOVE begin-copyright-block 
+//                                     
+// Redistributions of any form whatsoever must retain and/or include the     
+// following acknowledgment, notices and disclaimer:                         
+//                                                                           
+// This product includes software developed by Carnegie Mellon University.   
+//                                                                           
+// Copyright 2006 - 2008 by Eric Chung, Michael Ferdman, Brian Gold, Nikos   
+// Hardavellas, Jangwoo Kim, Ippokratis Pandis, Minglong Shao, Jared Smolens,
+// Stephen Somogyi, Evangelos Vlachos, Tom Wenisch, Anastassia Ailamaki,     
+// Babak Falsafi and James C. Hoe for the SimFlex Project, Computer          
+// Architecture Lab at Carnegie Mellon, Carnegie Mellon University.          
+//                                                                           
+// For more information, see the SimFlex project website at:                 
+//   http://www.ece.cmu.edu/~simflex                                         
+//                                                                           
+// You may not use the name 'Carnegie Mellon University' or derivations      
+// thereof to endorse or promote products derived from this software.        
+//                                                                           
+// If you modify the software you must place a notice on or within any       
+// modified version provided or made available to any third party stating    
+// that you have modified the software.  The notice shall include at least   
+// your name, address, phone number, email address and the date and purpose  
+// of the modification.                                                      
+//                                                                           
+// THE SOFTWARE IS PROVIDED 'AS-IS' WITHOUT ANY WARRANTY OF ANY KIND, EITHER 
+// EXPRESS, IMPLIED OR STATUTORY, INCLUDING BUT NOT LIMITED TO ANY WARRANTY  
+// THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS OR BE ERROR-FREE AND ANY 
+// IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,  
+// TITLE, OR NON-INFRINGEMENT.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY 
+// BE LIABLE FOR ANY DAMAGES, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, 
+// SPECIAL OR CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN   
+// ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY, 
+// CONTRACT, TORT OR OTHERWISE).                                             
+//                                     
+// DO-NOT-REMOVE end-copyright-block   
+
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+
+#include <list>
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+
+#include <core/boost_extensions/intrusive_ptr.hpp>
+#include <core/boost_extensions/padded_string_cast.hpp>
+#include <boost/throw_exception.hpp>
+#include <boost/none.hpp>
+
+#include <boost/dynamic_bitset.hpp>
+
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
+using namespace boost::multi_index;
+
+#include <core/target.hpp>
+#include <core/debug/debug.hpp>
+#include <core/types.hpp>
+#include <components/uFetch/uFetchTypes.hpp>
+
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/tracking.hpp>
+#include <boost/serialization/list.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/export.hpp>
+
+#include <core/stats.hpp>
+namespace Stat = Flexus::Stat;
+
+
+#include <components/Common/BranchPredictor.hpp>
+
+  #define DBG_DefineCategories BPred
+  #define DBG_SetDefaultOps AddCat(BPred)
+  #include DBG_Control()
+
+
+namespace Flexus {
+namespace SharedTypes {
+
+typedef struct BTBEntry{
+	VirtualMemoryAddress thePC;
+	eBranchType theBranchType;
+	VirtualMemoryAddress theTarget;
+} BTBEntry_mod;
+
+/*struct BTBEntry {
+  VirtualMemoryAddress thePC;
+  mutable eBranchType theBranchType;
+  mutable VirtualMemoryAddress theTarget;
+  BTBEntry( VirtualMemoryAddress aPC, eBranchType aType, VirtualMemoryAddress aTarget)
+   : thePC( aPC )
+   , theBranchType( aType )
+   , theTarget( aTarget)
+  {
+  }
+  private:
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version) {
+      ar & thePC;
+      ar & theBranchType;
+      ar & theTarget;
+    }
+    BTBEntry( ) {}
+};*/
+
+
+typedef struct btb_set_t{	
+  std::vector< BTBEntry > btb_set;
+	boost::dynamic_bitset<> valid;	// Valid bits
+	boost::dynamic_bitset<>	lru;		// LRU bits
+} btb_set_t_mod;
+
+/*struct by_baddr {};
+typedef multi_index_container
+  < BTBEntry
+  , indexed_by
+    < sequenced<>
+    , ordered_unique
+        < tag<by_baddr>
+        , member< BTBEntry, VirtualMemoryAddress, &BTBEntry::thePC>
+        >
+    >
+  >
+  btb_set_t;
+*/
+
+/*template<class Archive>
+void save(Archive & ar, const btb_set_t & t, unsigned int version) {
+  std::list<BTBEntry> btb;
+  std::copy( t.begin(), t.end(), std::back_inserter(btb));
+  // the hackish const is necessary to satisfy boost 1.33.1
+  ar << (const std::list<BTBEntry>)btb;
+}
+template<class Archive>
+void load(Archive & ar, btb_set_t & t, unsigned int version) {
+  std::list<BTBEntry> btb;
+  ar >> btb;
+  std::copy( btb.begin(), btb.end(), std::back_inserter(t));
+}*/
+
+} //SharedTypes
+} //Flexus
+
+/*namespace boost { namespace serialization {
+template<class Archive>
+inline void serialize( Archive & ar, Flexus::SharedTypes::btb_set_t& t, const unsigned int file_version ){
+    split_free(ar, t, file_version);
+}
+}}*/
+
+namespace Flexus {
+namespace SharedTypes {
+
+long long log2(long long aVal) {
+  DBG_Assert(aVal != 0);
+  --aVal;
+  unsigned int ii = 0;
+  while(aVal > 0) {
+    ii++;
+    aVal >>= 1;
+  }
+  return ii;
+}
+
+
+eDirection moreTaken( eDirection aDirection ) {
+  if (aDirection == kStronglyTaken) {
+    return kStronglyTaken;
+  }
+  return eDirection(aDirection - 1);
+}
+
+eDirection moreNotTaken( eDirection aDirection ) {
+  if (aDirection == kStronglyNotTaken) {
+    return kStronglyNotTaken;
+  }
+  return eDirection(aDirection + 1);
+}
+
+eDirection apply( eDirection aDirection, eDirection aState) {
+  if (aDirection <= kTaken) {
+    return moreTaken(aState);
+  } else {
+    return moreNotTaken(aState);
+  }
+}
+
+eDirection reverse(eDirection direction) {
+  if (direction >= kNotTaken) {
+    direction = kTaken;
+  } else {
+    direction = kNotTaken;
+  }
+  return direction;
+}
+
+struct gShare {
+  std::vector< eDirection > thePatternTable;
+  unsigned long theShiftReg;
+  int theShiftRegSize;
+  unsigned long thePatternMask;
+
+  private:
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version) {
+      unsigned long shift_reg = theShiftReg;
+      ar & thePatternTable;
+      ar & theShiftRegSize;
+      ar & thePatternMask;
+      ar & shift_reg;
+      theShiftReg = (theShiftReg & theShiftRegSize );
+    }
+    gShare( ) {}
+
+  public:
+  gShare( int aSize )
+   : theShiftRegSize(aSize)
+  {
+    // Set the history pattern mask to 2^bits-1
+    thePatternMask = ( 1 << aSize ) - 1;
+
+    reset();
+  }
+
+  void reset() {
+    thePatternTable.clear();
+    theShiftReg = 0;
+    eDirection direction = kNotTaken;
+    for (int i = 0; i < (1 << theShiftRegSize ); ++i) {
+      // fix to match the HW model	
+			thePatternTable.push_back(kStronglyTaken);
+			//thePatternTable.push_back(direction);
+      //direction = reverse(direction);
+    }
+  }
+
+  //This hashing function was stolen from SimpleScalar.  It is quite
+  //arbitrary.
+  int index( VirtualMemoryAddress anAddress) {
+    return (( theShiftReg ) ^ (anAddress >> 2)) & thePatternMask;
+  }
+
+  int index( VirtualMemoryAddress anAddress, unsigned long aShiftReg) {
+    return (( aShiftReg ) ^ (anAddress >> 2)) & thePatternMask;
+  }
+
+  void shiftIn( eDirection aDirection ) {
+    theShiftReg = ( theShiftReg << 1 ) & thePatternMask;
+    if ( aDirection >= kNotTaken ) {
+      theShiftReg |= 1;
+    }
+  }
+
+  void setShiftReg(unsigned long aPreviousShiftRegState) {
+    theShiftReg = aPreviousShiftRegState & thePatternMask;
+  }
+
+  unsigned long shiftReg() const {
+    return theShiftReg;
+  }
+
+  eDirection direction( VirtualMemoryAddress anAddress) { 
+		return thePatternTable[index(anAddress)];
+  }
+
+  eDirection direction ( VirtualMemoryAddress anAddress, unsigned long aShiftRegState ) {
+    return thePatternTable[index(anAddress, aShiftRegState)];
+  }
+
+  void update(VirtualMemoryAddress anAddress, eDirection aDirection) {
+		thePatternTable[index(anAddress)] = aDirection;
+  }
+
+  void update(VirtualMemoryAddress anAddress, unsigned long aShiftRegState, eDirection aDirection) {
+    thePatternTable[index(anAddress, aShiftRegState)] = aDirection;
+  }
+
+	//////////////////////////////////
+	// Checkpoint functions
+	void saveState( std::ostream & ofs) const {	
+		ofs << theShiftReg  << std::endl;
+		ofs << theShiftRegSize  << std::endl;	
+		ofs << thePatternMask  << std::endl;
+		for(int i=0; i < (1 << theShiftRegSize); i++){
+			ofs << static_cast<unsigned int>(thePatternTable[i]) << std::endl;
+		}	
+	}
+
+	void loadState( std::istream & ifs) {
+		ifs >> theShiftReg;
+		ifs >> theShiftRegSize;
+		ifs >> thePatternMask;
+		int temp;
+		for(int i=0; i < (1 << theShiftRegSize); i++){
+			ifs >> temp;
+			thePatternTable[i] = eDirection(temp);
+		}
+	}
+};
+
+struct Bimodal {
+  std::vector< eDirection > theTable;
+  int theSize;
+  unsigned long long theIndexMask;
+
+  private:
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version) {
+      ar & theTable;
+      ar & theSize;
+      ar & theIndexMask;
+    }
+    Bimodal( ) {}
+
+  public:
+  Bimodal( int aSize )
+   : theSize(aSize)
+  {
+    //aBTBSize must be a power of 2
+    DBG_Assert( ((aSize - 1) & (aSize)) == 0);
+    theIndexMask = aSize - 1;
+
+    reset();
+  }
+
+  void reset() {
+    theTable.clear();
+    eDirection direction = kNotTaken;
+    for (int i = 0; i < theSize; ++i) {
+			// fix to match the HW model	
+			theTable.push_back(kStronglyTaken);
+			//theTable.push_back(direction);
+      //direction = reverse(direction);
+    }
+  }
+
+  //This hashing function was stolen from SimpleScalar.  It is quite
+  //arbitrary.
+  int index( VirtualMemoryAddress anAddress) {
+    return (( anAddress >> 19) ^ (anAddress >> 2)) & theIndexMask;
+  }
+
+  eDirection direction( VirtualMemoryAddress anAddress) {
+    return theTable[index(anAddress)];
+  }
+
+  void update(VirtualMemoryAddress anAddress, eDirection aDirection) {
+    theTable[index(anAddress)] = aDirection;
+  }
+
+	//////////////////////////////////
+	// Checkpoint functions
+	void saveState( std::ostream & ofs) const {
+		ofs << theSize << std::endl;
+		ofs << theIndexMask << std::endl;
+		for(int i=0; i < theSize ; i++){
+			ofs << static_cast<unsigned int>(theTable[i]) << std::endl;
+		}	
+	}
+
+/*	inline std::istream & operator >> (std::istream &aStream, eDirection & aDirection) {
+		int temp;
+		aStream >> temp;
+		aDirection = eDirection(temp);
+		return aStream;
+	}*/
+		
+	void loadState( std::istream & ifs) {
+		ifs >> theSize;
+		ifs >> theIndexMask;
+		int temp;
+		//eDirection dir;
+		//ifs >> std::dec;
+		for(int i=0; i < theSize ; i++){
+			ifs >> temp;
+			theTable[i] = eDirection(temp);
+			//theTable[i] = kNotTaken;
+		}
+	}
+		
+};
+
+struct BTB {
+  std::vector< btb_set_t > theBTB;
+  unsigned int theBTBSets;
+  unsigned int theBTBAssoc;
+  unsigned long long theIndexMask;
+
+  private:
+    /*friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version) {
+      ar & theBTB;
+      ar & theBTBSets;
+      ar & theBTBAssoc;
+      ar & theIndexMask;
+    }
+    BTB() {}
+	*/
+  public:
+  BTB( int aBTBSets, int aBTBAssoc )
+   : theBTBSets(aBTBSets)
+   , theBTBAssoc(aBTBAssoc)
+  {
+    //aBTBSize must be a power of 2
+    DBG_Assert( ((aBTBSets - 1) & (aBTBSets)) == 0);
+    theBTB.resize(aBTBSets);
+    theIndexMask = aBTBSets - 1;
+		for(unsigned int i=0; i < theBTBSets; i++){
+			theBTB[i].btb_set.resize(theBTBAssoc);
+			theBTB[i].valid.resize(theBTBAssoc);
+			theBTB[i].lru.resize(theBTBAssoc);	
+		}
+  }
+
+  int index( VirtualMemoryAddress anAddress) {
+    // Shift address by 2, since we assume word-aligned PCs
+    return (anAddress >> 2) & theIndexMask;
+  }
+
+	unsigned long long get_tag( VirtualMemoryAddress anAddress){
+		//DBG_(Dev, ( << "Shifting" << (log2(theBTBSets)-1)) );
+		return ( (static_cast<unsigned long long>(anAddress)) >> (log2(theBTBSets)+2) );	
+	}
+
+  bool contains(VirtualMemoryAddress anAddress) {
+    for(unsigned int i=0; i < theBTBAssoc; i++){
+			if( (theBTB[index(anAddress)].valid[i]) && (theBTB[index(anAddress)].btb_set[i].thePC == anAddress) ){
+				return true;
+			}
+		}
+		return false;
+		//return (theBTB[index(anAddress)].get<by_baddr>().count(anAddress) > 0);
+  }
+
+  eBranchType type(VirtualMemoryAddress anAddress) {
+		for(unsigned int i=0; i < theBTBAssoc; i++){
+			if( (theBTB[index(anAddress)].valid[i]) && (theBTB[index(anAddress)].btb_set[i].thePC == anAddress) ){
+				return theBTB[index(anAddress)].btb_set[i].theBranchType;
+			}
+		}
+		return kNonBranch;
+
+	/*int idx = index(anAddress);
+    btb_set_t::index<by_baddr>::type::iterator iter = theBTB[idx].get<by_baddr>().find(anAddress);
+    if (iter == theBTB[idx].get<by_baddr>().end()) {
+      return kNonBranch;
+    }
+    return iter->theBranchType;*/
+	}
+
+  boost::optional<VirtualMemoryAddress> target(VirtualMemoryAddress anAddress) {
+		for(unsigned int i=0; i < theBTBAssoc; i++){
+			if( (theBTB[index(anAddress)].valid[i]) && (theBTB[index(anAddress)].btb_set[i].thePC == anAddress) ){
+				return theBTB[index(anAddress)].btb_set[i].theTarget;
+			}
+		}
+		return boost::none;
+
+	/*
+		int idx = index(anAddress);
+    btb_set_t::index<by_baddr>::type::iterator iter = theBTB[idx].get<by_baddr>().find(anAddress);
+    if (iter == theBTB[idx].get<by_baddr>().end() ) {
+      return boost::none;
+    }
+    return iter->theTarget;*/
+  }
+
+	void mru_next(boost::dynamic_bitset<> mru_in, boost::dynamic_bitset<> touch, boost::dynamic_bitset<> &mru_out){
+		boost::dynamic_bitset<> ones(theBTBAssoc);
+		ones = ~ones;	
+		
+		if ( (mru_in | touch) == ones ){
+			mru_out = touch;
+		} else {
+			mru_out = (mru_in | touch);
+		}
+		return;
+	}
+	
+  bool update( VirtualMemoryAddress aPC, eBranchType aType, VirtualMemoryAddress aTarget) {
+		boost::dynamic_bitset<> mru_next(theBTBAssoc);
+		boost::dynamic_bitset<> hit_mask(theBTBAssoc); 	
+		boost::dynamic_bitset<> ones(theBTBAssoc);
+		ones=~ones;
+		char hit_way = -1;	
+		
+		// check for hit
+		for(unsigned int i=0; i < theBTBAssoc; i++){
+			if( (theBTB[index(aPC)].valid[i]) && (theBTB[index(aPC)].btb_set[i].thePC == aPC) ){
+				hit_way = i;
+				hit_mask[i] = 1;
+			}
+		}
+
+		if(hit_way >= 0){		// BTB Hit
+			// Calculate and update next LRU mask
+			boost::dynamic_bitset<> mru_in(theBTBAssoc);
+			mru_in = (theBTB[index(aPC)].lru & theBTB[index(aPC)].valid);
+			if( (mru_in | hit_mask) == ones){
+				theBTB[index(aPC)].lru = hit_mask;
+			} else {
+				theBTB[index(aPC)].lru = mru_in | hit_mask;
+			}
+			return false;
+		}else {    // BTB Miss
+			// find way to replace
+			int LRUo = -1;
+			unsigned int count = 0, idx;			// maintain count for randomness as in hardware
+			for(unsigned int i = count; (i < theBTBAssoc) && (LRUo == -1); i++){
+				idx = (i+count) % theBTBAssoc;
+				if(theBTB[index(aPC)].lru[idx] == 0)		// found way to replace
+					LRUo = idx;				
+			}	
+
+			// Replace way and set valid bit
+			int repl_way = LRUo;
+			theBTB[index(aPC)].btb_set[repl_way].thePC = aPC;
+			theBTB[index(aPC)].btb_set[repl_way].theBranchType = aType;
+			theBTB[index(aPC)].btb_set[repl_way].theTarget = aTarget;	
+			theBTB[index(aPC)].valid[repl_way] = 1;	
+			
+			//Calculate and update next LRU mask	
+			boost::dynamic_bitset<> mru_in(theBTBAssoc);
+			boost::dynamic_bitset<> repl_way_mask(theBTBAssoc);	
+			mru_in = (theBTB[index(aPC)].lru & theBTB[index(aPC)].valid);
+			repl_way_mask[repl_way] = 1;
+			
+			if( (mru_in | repl_way_mask) == ones){
+				theBTB[index(aPC)].lru = repl_way_mask;
+				//DBG_(Dev, ( << "All ways got full " << " " ) );
+			} else {
+				theBTB[index(aPC)].lru = mru_in | repl_way_mask;
+			}
+			return true;
+		}
+
+		
+		/*
+			
+		int idx = index(aPC);
+    btb_set_t::index<by_baddr>::type::iterator iter = theBTB[idx].get<by_baddr>().find(aPC);
+    if (iter != theBTB[idx].get<by_baddr>().end()) {	// BTB Hit
+      if (aType == kNonBranch) {			
+         theBTB[idx].get<by_baddr>().erase(iter);
+      } else {
+        iter->theBranchType = aType;
+        if (aTarget) {
+          DBG_(Verb, ( << "BTB setting target for " << aPC << " to " << aTarget ) );
+          iter->theTarget = aTarget;
+        }
+        theBTB[idx].relocate( theBTB[idx].end(), theBTB[idx].project<0>(iter));
+      }
+      return false; //not a new entry
+    }else {				// BTB Miss
+			if (aType != kNonBranch) {	//is some kind of branch
+				if (theBTB[idx].size() >= theBTBAssoc) {
+					theBTB[idx].pop_front();
+				}
+				DBG_(Verb, ( << "BTB adding new branch for " << aPC << " to " << aTarget ) );
+				theBTB[idx].push_back( BTBEntry( aPC, aType, aTarget) );
+				return true; //new entry
+			}
+			return false; //not a branch -> not a new entry
+		}
+*/
+  }
+
+  bool update( BranchFeedback const & aFeedback) {
+    return update(aFeedback.thePC, aFeedback.theActualType, aFeedback.theActualTarget);
+  }
+
+	/////////////////////////////
+	// Checkpoint functions
+	void saveState( std::ostream & ofs) {
+		unsigned int width = 8;//sizeof(VirtualMemoryAddress)*2;
+    //DBG_(Dev, ( << "---------------------------------------------->Width set to" << width  ) );
+		//ofs.width(sizeof(VirtualMemoryAddress)*2);
+		//ofs << std::setw(sizeof(VirtualMemoryAddress)*2);
+		ofs << theBTBSets << std::endl;
+		ofs << theBTBAssoc << std::endl;
+		ofs << theIndexMask << std::endl;
+		ofs << std::setfill('0');
+		for(unsigned int s=0; s < theBTBSets ; s++){
+			for(unsigned int w=0; w < theBTBAssoc; w++){
+				ofs << std::hex << std::setw(width) << get_tag(theBTB[s].btb_set[w].thePC) << " ";
+				ofs << std::hex << std::setw(width) << static_cast<unsigned long long>(theBTB[s].btb_set[w].theTarget) << " ";
+			}
+			// save Valid and LRU bitmask
+			ofs << theBTB[s].valid << " " << theBTB[s].lru << std::endl;
+		}
+	}
+
+	void loadState( std::istream & ifs) {
+		ifs >> theBTBSets;
+		ifs >> theBTBAssoc;
+		ifs >> theIndexMask;
+		unsigned long long tmp_addr;
+		for(unsigned int s=0; s < theBTBSets ; s++){
+			for(unsigned int w=0; w < theBTBAssoc; w++){
+				ifs >> std::hex >> tmp_addr;
+				theBTB[s].btb_set[w].thePC = VirtualMemoryAddress(tmp_addr);
+				ifs >> std::hex >> tmp_addr;
+				theBTB[s].btb_set[w].theTarget = VirtualMemoryAddress(tmp_addr);
+				//	static_cast<unsigned long long>(theBTB[s].btb_set[w].thePC) << " ";
+				//ofs << std::hex << std::setw(width) <<  static_cast<unsigned long long>(theBTB[s].btb_set[w].theTarget) << " ";
+			}
+			// save Valid and LRU bitmask
+			ifs >> theBTB[s].valid;
+			ifs >> theBTB[s].lru;
+			//ofs << theBTB[s].valid << " " << theBTB[s].lru << std::endl;
+		}
+	}
+
+};
+
+struct CombiningImpl : public BranchPredictor {
+
+  std::string theName;
+  unsigned int theIndex;
+  unsigned int theSerial;
+  BTB theBTB;
+  Bimodal theBimodal;
+  Bimodal theMeta;
+  gShare theGShare;
+
+  Stat::StatCounter theBranches;          //Retired Branches
+    Stat::StatCounter theBranches_Unconditional;
+    Stat::StatCounter theBranches_Conditional;
+    Stat::StatCounter theBranches_Call;
+    Stat::StatCounter theBranches_Return;
+
+  Stat::StatCounter thePredictions;
+    Stat::StatCounter thePredictions_Bimodal;
+    Stat::StatCounter thePredictions_GShare;
+    Stat::StatCounter thePredictions_Unconditional;
+
+  Stat::StatCounter theCorrect;
+    Stat::StatCounter theCorrect_Bimodal;
+    Stat::StatCounter theCorrect_GShare;
+    Stat::StatCounter theCorrect_Unconditional;
+
+  Stat::StatCounter theMispredict;
+    Stat::StatCounter theMispredict_NewBranch;
+    Stat::StatCounter theMispredict_Direction;
+    Stat::StatCounter theMispredict_Meta;
+    Stat::StatCounter theMispredict_MetaGShare;
+    Stat::StatCounter theMispredict_MetaBimod;
+    Stat::StatCounter theMispredict_Target;
+
+  CombiningImpl( std::string const & aName, unsigned int anIndex )
+   : theName(aName)
+   , theIndex(anIndex)
+   , theSerial(0)
+   , theBTB( 2048, 16 )
+   , theBimodal( 16384 )
+   , theMeta( 16384 )
+   , theGShare( 13 )
+   , theBranches                      ( aName + "-branches" )
+   , theBranches_Unconditional        ( aName + "-branches:unconditional" )
+   , theBranches_Conditional          ( aName + "-branches:conditional" )
+   , theBranches_Call                 ( aName + "-branches:call" )
+   , theBranches_Return               ( aName + "-branches:return" )
+   , thePredictions                   ( aName + "-predictions" )
+   , thePredictions_Bimodal           ( aName + "-predictions:bimodal" )
+   , thePredictions_GShare            ( aName + "-predictions:gshare" )
+   , thePredictions_Unconditional     ( aName + "-predictions:unconditional" )
+   , theCorrect                       ( aName + "-correct" )
+   , theCorrect_Bimodal               ( aName + "-correct:bimodal" )
+   , theCorrect_GShare                ( aName + "-correct:gshare" )
+   , theCorrect_Unconditional         ( aName + "-correct:unconditional" )
+   , theMispredict                    ( aName + "-mispredict" )
+   , theMispredict_NewBranch          ( aName + "-mispredict:new" )
+   , theMispredict_Direction          ( aName + "-mispredict:direction" )
+   , theMispredict_Meta               ( aName + "-mispredict:meta" )
+   , theMispredict_MetaGShare         ( aName + "-mispredict:meta:chose_gshare" )
+   , theMispredict_MetaBimod          ( aName + "-mispredict:meta:chose_bimod" )
+   , theMispredict_Target             ( aName + "-mispredict:target" )
+   {}
+
+  bool isBranch( VirtualMemoryAddress anAddress) {
+    return theBTB.contains(anAddress);
+  }
+
+  VirtualMemoryAddress predictConditional( FetchAddr & aFetch ) {
+    eDirection bimodal = theBimodal.direction( aFetch.theAddress );
+    eDirection gshare = theGShare.direction( aFetch.theAddress );
+    eDirection meta = theMeta.direction( aFetch.theAddress );
+    eDirection prediction;
+
+    // Decide which predictor to believe
+    if (meta >= kNotTaken) {
+      ++thePredictions;
+      ++thePredictions_GShare;
+      prediction = gshare;
+    } else {
+      ++thePredictions;
+      ++thePredictions_Bimodal;
+      prediction = bimodal;
+    }
+
+    //Record the predictor state/predictions
+    aFetch.theBPState->thePrediction = prediction;
+    aFetch.theBPState->theBimodalPrediction = bimodal;
+    aFetch.theBPState->theMetaPrediction = meta;
+    aFetch.theBPState->theGSharePrediction = gshare;
+    aFetch.theBPState->theGShareShiftReg = theGShare.shiftReg();
+
+    // Speculatively update the shift register with the prediction from the
+    // gshare predictor.
+    // TODO: evaluate whether it's better to shift in the
+    // overall prediction or just the gshare part.
+		theGShare.shiftIn ( gshare );
+
+    DBG_ (Verb, ( << theIndex << "-BPRED-COND:  " << aFetch.theAddress << " BIMOD " << bimodal << " GSHARE " << gshare << " META " << meta << " OVERALL " << prediction ) );
+
+    if (prediction <= kTaken && theBTB.target( aFetch.theAddress ) ) {
+      return * theBTB.target(aFetch.theAddress );
+    } else {
+      return VirtualMemoryAddress(0);
+    }
+  }
+
+  VirtualMemoryAddress predict( FetchAddr & aFetch ) {
+    aFetch.theBPState = boost::intrusive_ptr<BPredState>(new BPredState() );
+    aFetch.theBPState->thePredictedType = theBTB.type( aFetch.theAddress);
+    aFetch.theBPState->theSerial = theSerial++;
+    aFetch.theBPState->thePredictedTarget = VirtualMemoryAddress(0);
+    aFetch.theBPState->thePrediction = kStronglyTaken;
+    aFetch.theBPState->theBimodalPrediction = kStronglyTaken;
+    aFetch.theBPState->theMetaPrediction = kStronglyTaken;
+    aFetch.theBPState->theGSharePrediction = kStronglyTaken;
+    aFetch.theBPState->theGShareShiftReg = 0;
+
+    switch ( aFetch.theBPState->thePredictedType ) {
+      case kNonBranch:
+        aFetch.theBPState->thePredictedTarget = VirtualMemoryAddress(0);
+        break;
+      case kConditional:
+        aFetch.theBPState->thePredictedTarget = predictConditional(aFetch);
+        break;
+      case kUnconditional:
+        ++thePredictions;
+        ++thePredictions_Unconditional;
+        if (theBTB.target(aFetch.theAddress)) {
+          aFetch.theBPState->thePredictedTarget = *theBTB.target(aFetch.theAddress);
+        } else {
+          aFetch.theBPState->thePredictedTarget = VirtualMemoryAddress(0);
+        }
+        aFetch.theBPState->theGShareShiftReg = theGShare.shiftReg();
+        break;
+      case kCall:
+        ++thePredictions;
+        ++thePredictions_Unconditional;
+        if (theBTB.target(aFetch.theAddress)) {
+          aFetch.theBPState->thePredictedTarget = *theBTB.target(aFetch.theAddress);
+        } else {
+          aFetch.theBPState->thePredictedTarget = VirtualMemoryAddress(0);
+        }
+        aFetch.theBPState->theGShareShiftReg = theGShare.shiftReg();
+        //Need to push address onto retstack
+        break;
+      case kReturn:
+        //Need to pop retstack
+        break;
+      default:
+        aFetch.theBPState->thePredictedTarget = VirtualMemoryAddress(0);
+        break;
+    }
+
+    if ( aFetch.theBPState->thePredictedType != kNonBranch ) {
+      DBG_( Verb, ( << theIndex << "-BPRED-PREDICT: PC \t" << aFetch.theAddress
+                   << " serial " << aFetch.theBPState->theSerial
+                   << " Target \t" << aFetch.theBPState->thePredictedTarget
+                   << "\tType " << aFetch.theBPState->thePredictedType ) );
+    }
+
+    return aFetch.theBPState->thePredictedTarget;
+  }
+
+  void stats(BranchFeedback const & aFeedback) {
+    if (! aFeedback.theBPState || aFeedback.theActualType != aFeedback.theBPState-> thePredictedType) {
+      ++theMispredict;
+      ++theMispredict_NewBranch;
+      DBG_( Verb, ( << "BPRED-RESOLVE Mispredict New-Branch " << aFeedback.theActualType << " @" << aFeedback.thePC << " " << aFeedback.theActualDirection << " to " << aFeedback.theActualTarget ) );
+    } else { 
+      if ( aFeedback.theActualType  == kConditional) {
+        if (( aFeedback.theBPState->thePrediction >= kNotTaken ) && ( aFeedback.theActualDirection >= kNotTaken )) {
+          ++theCorrect;
+          if (aFeedback.theBPState->theMetaPrediction >= kNotTaken) {
+            DBG_( Verb, ( << "BPRED-RESOLVE Correct (GShare) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " TAKEN to " << aFeedback.theActualTarget ) );
+            ++theCorrect_GShare;
+          } else {
+            DBG_( Verb, ( << "BPRED-RESOLVE Correct (Bimodal) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " TAKEN to " << aFeedback.theActualTarget  ) );
+            ++theCorrect_Bimodal;
+          }
+        } else if (( aFeedback.theBPState->thePrediction <= kTaken ) && ( aFeedback.theActualDirection <= kTaken ) ) {
+          if (aFeedback.theActualTarget == aFeedback.theBPState->thePredictedTarget) {
+            ++theCorrect;
+            if (aFeedback.theBPState->theMetaPrediction >= kNotTaken) {
+              DBG_( Verb, ( << "BPRED-RESOLVE Correct (GShare) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " NOT TAKEN" ) );
+              ++theCorrect_GShare;
+            } else {
+              DBG_( Verb, ( << "BPRED-RESOLVE Correct (Bimodal) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " NOT TAKEN" ) );
+              ++theCorrect_Bimodal;
+            }
+          } else {
+            DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Target) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " TAKEN to " << aFeedback.theActualTarget << " predicted target " << aFeedback.theBPState->thePredictedTarget ) );
+            ++theMispredict;
+            ++theMispredict_Target;
+          }
+
+        } else {
+          ++theMispredict;
+          if (( aFeedback.theBPState->theBimodalPrediction >= kNotTaken ) == ( aFeedback.theBPState->theGSharePrediction >= kNotTaken )) {
+            DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Direction) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " " << aFeedback.theActualDirection << " to " << aFeedback.theActualTarget ) );
+            ++theMispredict_Direction;
+          } else {
+            ++theMispredict_Meta;
+            if ( (aFeedback.theBPState->thePrediction >= kNotTaken) == (aFeedback.theBPState->theGSharePrediction >= kNotTaken) ) {
+              DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Meta:Gshare) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " " << aFeedback.theActualDirection << " to " << aFeedback.theActualTarget  ) );
+              ++theMispredict_MetaGShare;
+            } else {
+              DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Meta:Bimod) " << aFeedback.theBPState->thePrediction << " " << aFeedback.theActualType << " @" << aFeedback.thePC << " " << aFeedback.theActualDirection << " to " << aFeedback.theActualTarget  ) );
+              ++theMispredict_MetaBimod;
+            }
+          }
+        }
+      } else {
+        //Unconditinal
+        if (aFeedback.theActualTarget == aFeedback.theBPState->thePredictedTarget) {
+          DBG_( Verb, ( << "BPRED-RESOLVE Correct (Unconditional) " << aFeedback.theActualType << " @" << aFeedback.thePC << " to " << aFeedback.theActualTarget  ) );
+          ++theCorrect;
+          ++theCorrect_Unconditional;
+        } else {
+          DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Uncond-Target) " << aFeedback.theActualType << " @" << aFeedback.thePC << " to " << aFeedback.theActualTarget << " predicted target " << aFeedback.theBPState->thePredictedTarget ) );
+          ++theMispredict;
+          ++theMispredict_Target;
+        }
+      }
+    }
+
+
+    switch (aFeedback.theActualType) {
+      case kConditional:
+        theBranches++;
+        theBranches_Conditional++;
+        break;
+      case kUnconditional:
+        theBranches++;
+        theBranches_Unconditional++;
+        break;
+      case kCall:
+        theBranches++;
+        theBranches_Call++;
+        break;
+      case kReturn:
+        theBranches++;
+        theBranches_Return++;
+        break;
+      default:
+        break;
+    }
+  }
+
+  void feedback( BranchFeedback const & aFeedback) {
+    stats(aFeedback);
+    bool is_new = theBTB.update(aFeedback);
+
+    if (aFeedback.theActualType == kConditional) {
+      if (is_new) {
+        theBimodal.update(aFeedback.thePC, aFeedback.theActualDirection);
+        theGShare.shiftIn( aFeedback.theActualDirection );
+      } else if ( aFeedback.theBPState ) {
+
+        //Restore shift register and shift in the actual prediction
+        if ( (aFeedback.theBPState->theGSharePrediction >= kNotTaken) !=
+             (aFeedback.theActualDirection >= kNotTaken ) ) {
+          theGShare.setShiftReg( aFeedback.theBPState->theGShareShiftReg );
+          theGShare.shiftIn( aFeedback.theActualDirection );
+        }
+
+        //Update 2-bit counters
+        //Get current counter values, being careful to use the shift register from before
+        eDirection bimodal = theBimodal.direction( aFeedback.thePC );
+        eDirection gshare = theGShare.direction ( aFeedback.thePC, aFeedback.theBPState->theGShareShiftReg );
+        eDirection meta = theMeta.direction( aFeedback.thePC );
+
+        //Modify the tables, being careful to use the shift registers used to originally make the prediction
+        theBimodal.update(aFeedback.thePC, apply(aFeedback.theActualDirection, bimodal) );
+        theGShare.update(aFeedback.thePC, aFeedback.theBPState->theGShareShiftReg, apply(aFeedback.theActualDirection, gshare ));
+
+        if ( ( gshare >= kNotTaken ) != ( bimodal >= kNotTaken ) ) {
+					//Need to update meta
+					if ( (aFeedback.theActualDirection >= kNotTaken) == (gshare >= kNotTaken) ) {
+						//More gshare
+						theMeta.update(aFeedback.thePC, moreNotTaken( meta ) );
+					} else {
+						//More bimodal
+						theMeta.update(aFeedback.thePC, moreTaken( meta ) );
+					}
+				}
+      } //end !is_new
+    } else if (aFeedback.theBPState && aFeedback.theBPState->thePredictedTarget != aFeedback.theActualTarget) {
+      if (! is_new) {
+        //Unconditional branch which missed its target.  Restore shift register to the time of the branch
+        theGShare.setShiftReg( aFeedback.theBPState->theGShareShiftReg );
+      } else {
+        //New unconditional branch.  We do not know the shift register as of the time of the branch.
+      }
+    }
+
+    if ( aFeedback.theBPState ) {
+      DBG_(Verb, (<< theIndex << "-BPRED-FEEDBACK: PC \t" << aFeedback.thePC
+                 << " serial " << aFeedback.theBPState->theSerial
+                 << " Target \t" << aFeedback.theActualTarget
+                 << "\tType " << aFeedback.theActualType << " dir " << aFeedback.theActualDirection
+                 << " pred " << aFeedback.theBPState->thePrediction ) );
+    } else {
+      DBG_(Verb, (<< theIndex << "-BPRED-FEEDBACK: PC \t" << aFeedback.thePC
+                 << " Target \t" << aFeedback.theActualTarget
+                 << "\tType " << aFeedback.theActualType << " dir " << aFeedback.theActualDirection ) );
+    }
+
+    DBG_(Verb, ( << "Leaving feedback.") );
+  }
+
+
+  void saveState(std::string const & aDirName) const {
+    /*std::string fname( aDirName);
+    fname += "/bpred-" + boost::padded_string_cast<2,'0'>(theIndex);
+    std::ofstream ofs(fname.c_str(), std::ios::binary);
+    boost::archive::binary_oarchive oa(ofs);
+
+    oa << theBTB;
+    oa << theBimodal;
+    oa << theMeta;
+    oa << theGShare;
+
+    // close archive
+    ofs.close();*/
+  }
+
+
+  void loadState(std::string const & aDirName) {
+/*    std::string fname( aDirName);
+    fname += "/bpred-" + boost::padded_string_cast<2,'0'>(theIndex);
+    std::ifstream ifs(fname.c_str(), std::ios::binary);
+    if (ifs.good()) {
+      boost::archive::binary_iarchive ia(ifs);
+
+      ia >> theBTB;
+      ia >> theBimodal;
+      ia >> theMeta;
+      ia >> theGShare;
+      DBG_( Dev, ( << theName << " loaded branch predictor.  BTB size: " << theBTB.theBTBSets << " by " << theBTB.theBTBAssoc << " Bimodal size: " << theBimodal.theSize << " Meta size: " << theMeta.theSize << " Gshare size: " << theGShare.theShiftRegSize ) );
+
+      ifs.close();
+    } else {
+      DBG_(Dev, ( << "Unable to load bpred state " << fname << ". Using default state." ) );
+    }*/
+  }
+
+};
+
+/* Single BTB for all predictors */
+
+static BTB theGlobalBTB(8, 4  /*1024, 16*/);
+//static Bimodal theBimodal(32768 );
+//static Bimodal theMeta(8192 );
+//static gShare theGShare(13 );
+
+struct FastCombiningImpl : public FastBranchPredictor {
+
+  std::string theName;
+  unsigned int theIndex;
+  unsigned int theSerial;
+  //BTB theBTB;
+	Bimodal theBimodal;
+  Bimodal theMeta;
+  gShare theGShare;
+
+  Stat::StatCounter theBranches;          //Retired Branches
+    Stat::StatCounter theBranches_Unconditional;
+    Stat::StatCounter theBranches_Conditional;
+    Stat::StatCounter theBranches_Call;
+    Stat::StatCounter theBranches_Return;
+
+  Stat::StatCounter thePredictions;
+    Stat::StatCounter thePredictions_Bimodal;
+    Stat::StatCounter thePredictions_GShare;
+    Stat::StatCounter thePredictions_Unconditional;
+
+  Stat::StatCounter theCorrect;
+    Stat::StatCounter theCorrect_Bimodal;
+    Stat::StatCounter theCorrect_GShare;
+    Stat::StatCounter theCorrect_Unconditional;
+
+  Stat::StatCounter theMispredict;
+    Stat::StatCounter theMispredict_NewBranch;
+    Stat::StatCounter theMispredict_Direction;
+    Stat::StatCounter theMispredict_Meta;
+    Stat::StatCounter theMispredict_MetaGShare;
+    Stat::StatCounter theMispredict_MetaBimod;
+    Stat::StatCounter theMispredict_Target;
+
+  FastCombiningImpl( std::string const & aName, unsigned int anIndex )
+   : theName(aName)
+   , theIndex(anIndex)
+   , theSerial(0)
+   //, theBTB( 1024, 16 )			// the global BTB is declared a few lines above
+   , theBimodal( 8/*32768*/ )
+   , theMeta( 8/*8192*/ )
+   , theGShare( 3/*13*/ )
+   , theBranches                      ( aName + "-branches" )
+   , theBranches_Unconditional        ( aName + "-branches:unconditional" )
+   , theBranches_Conditional          ( aName + "-branches:conditional" )
+   , theBranches_Call                 ( aName + "-branches:call" )
+   , theBranches_Return               ( aName + "-branches:return" )
+   , thePredictions                   ( aName + "-predictions" )
+   , thePredictions_Bimodal           ( aName + "-predictions:bimodal" )
+   , thePredictions_GShare            ( aName + "-predictions:gshare" )
+   , thePredictions_Unconditional     ( aName + "-predictions:unconditional" )
+   , theCorrect                       ( aName + "-correct" )
+   , theCorrect_Bimodal               ( aName + "-correct:bimodal" )
+   , theCorrect_GShare                ( aName + "-correct:gshare" )
+   , theCorrect_Unconditional         ( aName + "-correct:unconditional" )
+   , theMispredict                    ( aName + "-mispredict" )
+   , theMispredict_NewBranch          ( aName + "-mispredict:new" )
+   , theMispredict_Direction          ( aName + "-mispredict:direction" )
+   , theMispredict_Meta               ( aName + "-mispredict:meta" )
+   , theMispredict_MetaGShare         ( aName + "-mispredict:meta:chose_gshare" )
+   , theMispredict_MetaBimod          ( aName + "-mispredict:meta:chose_bimod" )
+   , theMispredict_Target             ( aName + "-mispredict:target" )
+   { }
+
+  VirtualMemoryAddress predictConditional(  VirtualMemoryAddress anAddress, BPredState & aBPState ) {
+    eDirection bimodal = theBimodal.direction( anAddress );
+    eDirection gshare = theGShare.direction( anAddress );
+    eDirection meta = theMeta.direction( anAddress );
+    eDirection prediction;
+
+    // Decide which predictor to believe
+    if (meta >= kNotTaken) {
+      ++thePredictions;
+      ++thePredictions_GShare;
+      prediction = gshare;
+    } else {
+      ++thePredictions;
+      ++thePredictions_Bimodal;
+      prediction = bimodal;
+    }
+
+    //Record the predictor state/predictions
+    aBPState.thePrediction = prediction;
+    aBPState.theBimodalPrediction = bimodal;
+    aBPState.theMetaPrediction = meta;
+    aBPState.theGSharePrediction = gshare;
+    aBPState.theGShareShiftReg = theGShare.shiftReg();
+
+    // Speculatively update the shift register with the prediction from the
+    // gshare predictor.
+    // TODO: evaluate whether it's better to shift in the
+    // overall prediction or just the gshare part.
+		// Comment by Michael Papamichael: The line below does not seem to affect the longterm state of the branch predictor (at least the functional model). It is only used to gather statistics. The feedback function that is always called afterwards will restore the shift register to its original state if the gshare mispredicted. 
+    //theGShare.shiftIn ( gshare );
+
+    DBG_ (Verb, ( << theIndex << "-BPRED-COND:  " << anAddress << " BIMOD " << bimodal << " GSHARE " << gshare << " META " << meta << " OVERALL " << prediction ) );
+
+    if (prediction <= kTaken && theGlobalBTB.target( anAddress ) ) {
+      return * theGlobalBTB.target(anAddress );
+    } else {
+      return VirtualMemoryAddress(0);
+    }
+  }
+
+  void predict( VirtualMemoryAddress anAddress, BPredState & aBPState ) {
+    aBPState.thePredictedType = theGlobalBTB.type(anAddress);
+    aBPState.theSerial = theSerial++;
+    aBPState.thePredictedTarget = VirtualMemoryAddress(0);
+    aBPState.thePrediction = kStronglyTaken;
+    aBPState.theBimodalPrediction = kStronglyTaken;
+    aBPState.theMetaPrediction = kStronglyTaken;
+    aBPState.theGSharePrediction = kStronglyTaken;
+    aBPState.theGShareShiftReg = 0;
+
+    switch ( aBPState.thePredictedType ) {
+      case kNonBranch:
+        aBPState.thePredictedTarget = VirtualMemoryAddress(0);
+        break;
+      case kConditional:
+        aBPState.thePredictedTarget = predictConditional(VirtualMemoryAddress(anAddress), aBPState);
+        break;
+      case kUnconditional:
+        ++thePredictions;
+        ++thePredictions_Unconditional;
+        if (theGlobalBTB.target(anAddress)) {
+          aBPState.thePredictedTarget = *theGlobalBTB.target(anAddress);
+        } else {
+          aBPState.thePredictedTarget = VirtualMemoryAddress(0);
+        }
+        aBPState.theGShareShiftReg = theGShare.shiftReg();
+        break;
+      case kCall:
+        ++thePredictions;
+        ++thePredictions_Unconditional;
+        if (theGlobalBTB.target(anAddress)) {
+          aBPState.thePredictedTarget = *theGlobalBTB.target(anAddress);
+        } else {
+          aBPState.thePredictedTarget = VirtualMemoryAddress(0);
+        }
+        aBPState.theGShareShiftReg = theGShare.shiftReg();
+        //Need to push address onto retstack
+        break;
+      case kReturn:
+        //Need to pop retstack
+        break;
+      default:
+        aBPState.thePredictedTarget = VirtualMemoryAddress(0);
+        break;
+    }
+
+    if ( aBPState.thePredictedType != kNonBranch ) {
+      DBG_( Verb, ( << theIndex << "-BPRED-PREDICT: PC \t" << anAddress
+                   << " serial " << aBPState.theSerial
+                   << " Target \t" << aBPState.thePredictedTarget
+                   << "\tType " << aBPState.thePredictedType ) );
+    }
+  }
+
+  void stats(unsigned long anAddress,  eBranchType anActualType, eDirection anActualDirection, unsigned long anActualTarget, BPredState & aBPState) {
+    if (anActualType != aBPState.thePredictedType) {
+      ++theMispredict;
+      ++theMispredict_NewBranch;
+      DBG_( Verb, ( << "BPRED-RESOLVE Mispredict New-Branch " << anActualType << " @" << anAddress << " " << anActualDirection << " to " << anActualTarget ) );
+    } else {			// The type was predicted correctly
+      if ( anActualType  == kConditional) {
+        if (( aBPState.thePrediction >= kNotTaken ) && ( anActualDirection >= kNotTaken )) {
+          ++theCorrect;
+          if (aBPState.theMetaPrediction >= kNotTaken) {
+            DBG_( Verb, ( << "BPRED-RESOLVE Correct (GShare) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " TAKEN to " << anActualTarget ) );
+            ++theCorrect_GShare;
+          } else {
+            DBG_( Verb, ( << "BPRED-RESOLVE Correct (Bimodal) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " TAKEN to " << anActualTarget  ) );
+            ++theCorrect_Bimodal;
+          }
+        } else if (( aBPState.thePrediction <= kTaken ) && ( anActualDirection <= kTaken ) ) {
+          if (anActualTarget == aBPState.thePredictedTarget) {		// for conditional branches I also need to correctly predict the target
+            ++theCorrect;
+            if (aBPState.theMetaPrediction >= kNotTaken) {
+              DBG_( Verb, ( << "BPRED-RESOLVE Correct (GShare) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " NOT TAKEN" ) );
+              ++theCorrect_GShare;
+            } else {
+              DBG_( Verb, ( << "BPRED-RESOLVE Correct (Bimodal) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " NOT TAKEN" ) );
+              ++theCorrect_Bimodal;
+            }
+          } else {   // the direction was right, but the target was wrong
+            DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Target) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " TAKEN to " << anActualTarget << " predicted target " << aBPState.thePredictedTarget ) );
+            ++theMispredict;
+            ++theMispredict_Target;
+          }
+
+        } else {			// Either Direction was wrong or the Meta predictor used the wrong predictor
+          ++theMispredict;
+          if (( aBPState.theBimodalPrediction >= kNotTaken ) == ( aBPState.theGSharePrediction >= kNotTaken )) {
+            DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Direction) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " " << anActualDirection << " to " << anActualTarget ) );
+            ++theMispredict_Direction;
+          } else {
+            ++theMispredict_Meta;
+            if ( (aBPState.thePrediction >= kNotTaken) == (aBPState.theGSharePrediction >= kNotTaken) ) {
+              DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Meta:Gshare) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " " << anActualDirection << " to " << anActualTarget  ) );
+              ++theMispredict_MetaGShare;
+            } else {
+              DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Meta:Bimod) " << aBPState.thePrediction << " " << anActualType << " @" << anAddress << " " << anActualDirection << " to " << anActualTarget  ) );
+              ++theMispredict_MetaBimod;
+            }
+          }
+        }
+      } else { // Uncoditional
+        if (anActualTarget == aBPState.thePredictedTarget) {
+          DBG_( Verb, ( << "BPRED-RESOLVE Correct (Unconditional) " << anActualType << " @" << anAddress << " to " << anActualTarget  ) );
+          ++theCorrect;
+          ++theCorrect_Unconditional;
+        } else {
+          DBG_( Verb, ( << "BPRED-RESOLVE Mispredict (Uncond-Target) " << anActualType << " @" << anAddress << " to " << anActualTarget << " predicted target " << aBPState.thePredictedTarget ) );
+          ++theMispredict;
+          ++theMispredict_Target;
+        }
+      }
+    }
+
+
+    switch (anActualType) {
+      case kConditional:
+        theBranches++;
+        theBranches_Conditional++;
+        break;
+      case kUnconditional:
+        theBranches++;
+        theBranches_Unconditional++;
+        break;
+      case kCall:
+        theBranches++;
+        theBranches_Call++;
+        break;
+      case kReturn:
+        theBranches++;
+        theBranches_Return++;
+        break;
+      default:
+        break;
+    }
+  }
+
+
+static std::ofstream br_ofs;
+	
+  void feedback( VirtualMemoryAddress anAddress,  eBranchType anActualType, eDirection anActualDirection, VirtualMemoryAddress anActualTarget, BPredState & aBPState) {
+		stats(anAddress, anActualType, anActualDirection, anActualTarget, aBPState);
+		
+		// maybe dump the rom file for the HW functional model here
+		static bool create_file = true;	
+		static bool dump_branches = false;	
+		static std::ofstream br_ofs;
+		static unsigned int count = 0;
+		if(create_file){
+			br_ofs.open( "/home/mpapamic/branches.incl" );	
+			create_file = false;
+			dump_branches = true;
+		}
+		
+		if(dump_branches){
+			/*std::cerr << "bps.put( tagged Branch_cmd( Branch_cmd_t{cpuid:" << std::setw(2) << theIndex;
+			std::cerr << ", branch_pc:'h" << std::setfill('0') << std::setw(8) << std::hex << static_cast<unsigned long long>(anAddress);
+			std::cerr << ", actual_dir:" << ((anActualDirection >= kNotTaken) ? "WasNotTaken" : "WasTaken");
+			std::cerr << ", target_pc:'h" << std::setfill('0') << std::setw(8) << std::hex << static_cast<unsigned long long>(anActualTarget);
+			std::cerr << "} ) ) ;" << std::endl ;*/
+			
+			br_ofs << "bps.put( tagged Branch_cmd( BranchCmd_t{cpuid:" << std::dec << std::setfill(' ') << std::setw(2) << theIndex;
+			br_ofs << ", branch_pc:'h" << std::setfill('0') << std::setw(8) << std::hex << static_cast<unsigned long long>(anAddress);
+			br_ofs << ", actual_dir:" << std::setfill(' ') << std::setw(11) << ((anActualDirection >= kNotTaken) ? "WasNotTaken" : "WasTaken");
+			br_ofs << ", target_pc:'h" << std::setfill('0') << std::setw(8) << std::hex << static_cast<unsigned long long>(anActualTarget);
+			br_ofs << "} ) ) ;" << std::endl ;
+			/*if(count++ > 1000){
+				dump_branches = false;
+				br_ofs.close();
+			}*/
+			br_ofs.flush();
+		}
+			
+		//DBG_( Dev, ( << "Type: " << anActualType )  );		
+		//DBG_( Dev, ( << "bps.put( tagged Branch_cmd( Branch_cmd_t{cpuid:" << theIndex << ", branch_pc:'h" << std::hex << anAddress << ", actual_dir:" << ((anActualDirection >= kNotTaken) ? "WasNotTaken" : "WasTaken") << ", target_pc:'h" << std::hex << anActualTarget << "} ) ) ;" )  );		
+		//rom_ofs.close();
+	
+		
+		if(anActualType != kNonBranch){	// these are the only branches that the HW functional model cares about
+			theGlobalBTB.update(anAddress, anActualType, anActualTarget);	
+		
+			
+			//Get predictions
+			eDirection bimodal = theBimodal.direction( anAddress );
+			eDirection gshare = theGShare.direction ( anAddress );
+			eDirection meta = theMeta.direction( anAddress );
+			//Update Bimodal or Gshare based on Meta
+			
+			theBimodal.update(anAddress, apply(anActualDirection, bimodal) );
+			theGShare.update(anAddress, apply(anActualDirection, gshare ));
+		
+			
+				/*if (meta >= kNotTaken){
+				theGShare.update(anAddress, apply(anActualDirection, gshare ));
+			} else {
+				theBimodal.update(anAddress, apply(anActualDirection, bimodal) );
+			}*/
+				
+			//Update the Meta if needed
+			if ( ( gshare >= kNotTaken ) != ( bimodal >= kNotTaken ) ) {  // Predictors (Bimodal/Gshare) disagree 
+				//Need to update meta
+				if ( (anActualDirection >= kNotTaken) == (gshare >= kNotTaken) ) {
+					//More gshare
+					theMeta.update(anAddress, moreNotTaken( meta ) );
+				} else {
+					//More bimodal
+					theMeta.update(anAddress, moreTaken( meta ) );
+				}
+			}
+			theGShare.shiftIn( anActualDirection);
+		}	
+
+
+
+		// below is original feedback code
+		/*		stats(anAddress, anActualType, anActualDirection, anActualTarget, aBPState);
+    bool is_new = theGlobalBTB.update(anAddress, anActualType, anActualTarget);
+
+    if (anActualType == kConditional) {     // feedback only cares about conditional branches
+
+      if (is_new) {
+        theBimodal.update(anAddress, anActualDirection);
+        theGShare.shiftIn( anActualDirection );
+      }else{
+			 	if ( aBPState.thePredictedType != kNonBranch ) {   // if it was predicted to be some kind of branch
+					//Restore shift register and shift in the actual prediction
+					if ( (aBPState.theGSharePrediction >= kNotTaken) !=
+							 (anActualDirection >= kNotTaken ) ) {
+						theGShare.setShiftReg( aBPState.theGShareShiftReg );
+						theGShare.shiftIn( anActualDirection );
+					}
+
+					//Update 2-bit counters
+					//Get current counter values, being careful to use the shift register from before
+					eDirection bimodal = theBimodal.direction( anAddress );
+					eDirection gshare = theGShare.direction ( anAddress, aBPState.theGShareShiftReg );
+					eDirection meta = theMeta.direction( anAddress );
+
+					//Modify the tables, being careful to use the shift registers used to originally make the prediction
+					theBimodal.update(anAddress, apply(anActualDirection, bimodal) );
+					theGShare.update(anAddress, aBPState.theGShareShiftReg, apply(anActualDirection, gshare ));
+
+					if ( ( gshare >= kNotTaken ) != ( bimodal >= kNotTaken ) ) {  // Predictors (Bimodal/Gshare) disagree 
+						//Need to update meta
+						if ( (anActualDirection >= kNotTaken) == (gshare >= kNotTaken) ) {
+							//More gshare
+							theMeta.update(anAddress, moreNotTaken( meta ) );
+						} else {
+							//More bimodal
+							theMeta.update(anAddress, moreTaken( meta ) );
+						}
+					}
+				} //don't do anything if kNonBranch
+			}
+    }else {				// not conditional branch 
+			if (aBPState.thePredictedType != kNonBranch && aBPState.thePredictedTarget != anActualTarget) {
+				if (! is_new) {
+					//Unconditional branch which missed its target.  Restore shift register to the time of the branch
+					theGShare.setShiftReg( aBPState.theGShareShiftReg );
+				}else {
+					//New unconditional branch.  We do not know the shift register as of the time of the branch.
+				}
+			}
+		}
+
+    DBG_(Verb, (<< theIndex << "-BPRED-FEEDBACK: PC \t" << anAddress
+               << " serial " << aBPState.theSerial
+               << " Target \t" << anActualTarget
+               << "\tType " << anActualType << " dir " << anActualDirection
+               << " pred " << aBPState.thePrediction ) );
+
+    DBG_(Verb, ( << "Leaving feedback.") );
+		*/
+  }
+
+
+  void saveState(std::string const & aDirName) const {
+		
+		// Save BTB state 
+		std::string fnameBTB( aDirName);
+		fnameBTB += "/bpred_BTB-" + boost::padded_string_cast<2,'0'>(theIndex);
+		std::ofstream BTB_ofs( fnameBTB.c_str() );
+		theGlobalBTB.saveState(BTB_ofs);	
+		BTB_ofs.close();
+
+		// Save Bimodal
+		std::string fnameBimodal( aDirName);
+		fnameBimodal += "/bpred_Bimodal-" + boost::padded_string_cast<2,'0'>(theIndex);
+		std::ofstream Bimodal_ofs( fnameBimodal.c_str() );
+		theBimodal.saveState(Bimodal_ofs);	
+		Bimodal_ofs.close();
+
+		// Save Gshare
+		std::string fnameGshare( aDirName);
+		fnameGshare += "/bpred_Gshare-" + boost::padded_string_cast<2,'0'>(theIndex);
+		std::ofstream Gshare_ofs( fnameGshare.c_str() );
+		theGShare.saveState(Gshare_ofs);	
+		Gshare_ofs.close();
+		
+		// Save Meta
+		std::string fnameMeta( aDirName);
+		fnameMeta += "/bpred_Meta-" + boost::padded_string_cast<2,'0'>(theIndex);
+		std::ofstream Meta_ofs( fnameMeta.c_str() );
+		theMeta.saveState(Meta_ofs);	
+		Meta_ofs.close();
+
+	/*std::string fnameMeta( aDirName);
+		fnameMeta += "/bpred_Meta-" + boost::padded_string_cast<2,'0'>(theIndex);
+		FILE * Meta_fp = fopen( fnameMeta.c_str(), "w+");
+		theMeta.saveState(Meta_fp);	
+		fclose(Meta_fp);
+		*/
+    //std::string fname( aDirName);
+    //fname += "/bpred-" + boost::padded_string_cast<2,'0'>(theIndex);	
+		//std::ofstream ofs(fname.c_str(), std::ios::binary);
+    //boost::archive::binary_oarchive oa(ofs);
+
+    //oa << theGlobalBTB;
+    //oa << theBimodal;
+    //oa << theMeta;
+    //oa << theGShare;
+
+    // close archive
+    //ofs.close();
+  }
+
+
+  void loadState(std::string const & aDirName) {
+    // Load BTB state 
+		std::string fnameBTB( aDirName);
+		fnameBTB += "/bpred_BTB-" + boost::padded_string_cast<2,'0'>(theIndex);
+		std::ifstream BTB_ifs( fnameBTB.c_str() );
+		theGlobalBTB.loadState(BTB_ifs);	
+		BTB_ifs.close();
+		
+		// Load Bimodal
+		std::string fnameBimodal( aDirName);
+		fnameBimodal += "/bpred_Bimodal-" + boost::padded_string_cast<2,'0'>(theIndex);	
+    std::ifstream Bimodal_ifs(fnameBimodal.c_str());
+		theBimodal.loadState(Bimodal_ifs);	
+		Bimodal_ifs.close();
+
+		// Load Gshare
+		std::string fnameGshare( aDirName);
+		fnameGshare += "/bpred_Gshare-" + boost::padded_string_cast<2,'0'>(theIndex);
+    std::ifstream Gshare_ifs(fnameGshare.c_str());
+		theGShare.loadState(Gshare_ifs);	
+		Gshare_ifs.close();
+
+		// Load Meta
+		std::string fnameMeta( aDirName);
+		fnameMeta += "/bpred_Meta-" + boost::padded_string_cast<2,'0'>(theIndex);
+    std::ifstream Meta_ifs(fnameMeta.c_str());
+		theMeta.loadState(Meta_ifs);	
+		Meta_ifs.close();
+
+		
+		//std::string fname( aDirName);
+    //fname += "/bpred-" + boost::padded_string_cast<2,'0'>(theIndex);
+    //std::ifstream ifs(fname.c_str(), std::ios::binary);
+    //if (ifs.good()) {
+      //boost::archive::binary_iarchive ia(ifs);
+
+      //ia >> theGlobalBTB;
+      //ia >> theBimodal;
+      //ia >> theMeta;
+      //ia >> theGShare;
+      // DBG_( Dev, ( << theName << " loaded branch predictor.  BTB size: " << theGlobalBTB.theBTBSets << " by " << theGlobalBTB.theBTBAssoc << " Bimodal size: " << theBimodal.theSize << " Meta size: " << theMeta.theSize << " Gshare size: " << theGShare.theShiftRegSize ) );
+
+
+      //ifs.close();
+    //} else {
+    //  DBG_(Dev, ( << "Unable to load bpred state " << fname << ". Using default state." ) );
+    //}
+  }
+
+};
+
+
+BranchPredictor * BranchPredictor::combining(std::string const & aName, unsigned int anIndex) {
+  return new CombiningImpl(aName, anIndex);
+}
+
+
+FastBranchPredictor * FastBranchPredictor::combining(std::string const & aName, unsigned int anIndex) {
+  return new FastCombiningImpl(aName, anIndex);
+}
+
+std::ostream & operator << (std::ostream & anOstream, eBranchType aType) {
+  char * types[] =
+    { "NonBranch"
+    , "Conditional"
+    , "Unconditional"
+    , "Call"
+    , "Return"
+    };
+  if (aType >= kLastBranchType) {
+    anOstream << "InvalidBranchType(" << static_cast<int>(aType) << ")";
+  } else {
+    anOstream << types[aType];
+  }
+  return anOstream;
+}
+
+std::ostream & operator << (std::ostream & anOstream, eDirection aDir) {
+  char * dir[] =
+    { "StronglyTaken"
+    , "Taken"
+    , "NotTaken"
+    , "StronglyNotTaken"
+    };
+  if (aDir > kStronglyNotTaken) {
+    anOstream << "InvalidBranchType(" << static_cast<int>(aDir) << ")";
+  } else {
+    anOstream << dir[aDir];
+  }
+  return anOstream;
+}
+
+} //SharedTypes
+} //Flexus

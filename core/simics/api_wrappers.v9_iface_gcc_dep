@@ -1,0 +1,35 @@
+simics/api_wrappers.v9_iface_gcc_o: simics/api_wrappers.cpp \
+  /home/jevdjic/flexus_avf/core/target.hpp \
+  /home/jevdjic/flexus_avf/core/targets/v9.hpp \
+  /home/parsacom/tools/simics/src/include/simics/global.h \
+  /usr/include/stdio.h /usr/include/features.h /usr/include/sys/cdefs.h \
+  /usr/include/bits/wordsize.h /usr/include/gnu/stubs.h \
+  /usr/include/gnu/stubs-64.h \
+  /home/parsacom/tools/gcc-4.1.2/lib/gcc/x86_64-unknown-linux-gnu/4.1.2/include/stddef.h \
+  /usr/include/bits/types.h /usr/include/bits/typesizes.h \
+  /usr/include/libio.h /usr/include/_G_config.h /usr/include/wchar.h \
+  /usr/include/bits/wchar.h /usr/include/gconv.h \
+  /home/parsacom/tools/gcc-4.1.2/lib/gcc/x86_64-unknown-linux-gnu/4.1.2/include/stdarg.h \
+  /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
+  /usr/include/stdlib.h /usr/include/bits/waitflags.h \
+  /usr/include/bits/waitstatus.h /usr/include/endian.h \
+  /usr/include/bits/endian.h /usr/include/xlocale.h \
+  /usr/include/sys/types.h /usr/include/time.h /usr/include/sys/select.h \
+  /usr/include/bits/select.h /usr/include/bits/sigset.h \
+  /usr/include/bits/time.h /usr/include/sys/sysmacros.h \
+  /usr/include/bits/pthreadtypes.h /usr/include/alloca.h \
+  /usr/include/string.h \
+  /home/parsacom/tools/simics/src/include/simics/build-id.h \
+  /home/jevdjic/flexus_avf/core/simics/api_wrappers.hpp \
+  /home/parsacom/tools/simics/src/include/simics/core/types.h \
+  /home/parsacom/tools/gcc-4.1.2/lib/gcc/x86_64-unknown-linux-gnu/4.1.2/include/limits.h \
+  /home/parsacom/tools/gcc-4.1.2/lib/gcc/x86_64-unknown-linux-gnu/4.1.2/include/syslimits.h \
+  /usr/include/limits.h /usr/include/bits/posix1_lim.h \
+  /usr/include/bits/local_lim.h /usr/include/linux/limits.h \
+  /usr/include/bits/posix2_lim.h /usr/include/bits/xopen_lim.h \
+  /home/parsacom/tools/simics/src/include/simics/core/callbacks-types.h \
+  /home/parsacom/tools/simics/src/include/simics/core/memory.h \
+  /home/parsacom/tools/simics/src/include/simics/core/configuration.h \
+  /home/parsacom/tools/simics/src/include/simics/core/processor.h \
+  /home/parsacom/tools/simics/src/include/simics/arch/sparc.h \
+  /home/parsacom/tools/simics/src/include/simics/core/control.h

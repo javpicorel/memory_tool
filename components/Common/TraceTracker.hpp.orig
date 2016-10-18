@@ -1,0 +1,156 @@
+// DO-NOT-REMOVE begin-copyright-block 
+//                                     
+// Redistributions of any form whatsoever must retain and/or include the     
+// following acknowledgment, notices and disclaimer:                         
+//                                                                           
+// This product includes software developed by Carnegie Mellon University.   
+//                                                                           
+// Copyright 2006 - 2008 by Eric Chung, Michael Ferdman, Brian Gold, Nikos   
+// Hardavellas, Jangwoo Kim, Ippokratis Pandis, Minglong Shao, Jared Smolens,
+// Stephen Somogyi, Evangelos Vlachos, Tom Wenisch, Anastassia Ailamaki,     
+// Babak Falsafi and James C. Hoe for the SimFlex Project, Computer          
+// Architecture Lab at Carnegie Mellon, Carnegie Mellon University.          
+//                                                                           
+// For more information, see the SimFlex project website at:                 
+//   http://www.ece.cmu.edu/~simflex                                         
+//                                                                           
+// You may not use the name 'Carnegie Mellon University' or derivations      
+// thereof to endorse or promote products derived from this software.        
+//                                                                           
+// If you modify the software you must place a notice on or within any       
+// modified version provided or made available to any third party stating    
+// that you have modified the software.  The notice shall include at least   
+// your name, address, phone number, email address and the date and purpose  
+// of the modification.                                                      
+//                                                                           
+// THE SOFTWARE IS PROVIDED 'AS-IS' WITHOUT ANY WARRANTY OF ANY KIND, EITHER 
+// EXPRESS, IMPLIED OR STATUTORY, INCLUDING BUT NOT LIMITED TO ANY WARRANTY  
+// THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS OR BE ERROR-FREE AND ANY 
+// IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,  
+// TITLE, OR NON-INFRINGEMENT.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY 
+// BE LIABLE FOR ANY DAMAGES, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, 
+// SPECIAL OR CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN   
+// ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY, 
+// CONTRACT, TORT OR OTHERWISE).                                             
+//                                     
+// DO-NOT-REMOVE end-copyright-block   
+#ifndef _TRACE_TRACKER_HPP_
+#define _TRACE_TRACKER_HPP_
+
+#include <map>
+
+#include <core/boost_extensions/intrusive_ptr.hpp>
+#include <boost/shared_ptr.hpp>
+#include <boost/optional.hpp>
+#include <boost/tuple/tuple.hpp>
+#include <core/target.hpp>
+#include <core/types.hpp>
+#include <core/stats.hpp>
+
+#include <components/Common/Slices/TransactionTracker.hpp>
+#include <components/Common/Slices/PrefetchCommand.hpp> /* CMU-ONLY */
+
+
+#include DBG_Control()
+
+namespace nTraceTracker {
+
+  using Flexus::SharedTypes::PrefetchCommand; /* CMU-ONLY */
+
+  typedef unsigned long address_t;
+
+  struct NodeEntry;  /* CMU-ONLY */
+  struct GhbEntry;  /* CMU-ONLY */
+  struct PrefetchTracker;  /* CMU-ONLY */
+  struct SgpTracker;  /* CMU-ONLY */
+  struct SimCacheEntry;  /* CMU-ONLY */
+  class SharingTracker; /* CMU-ONLY */
+
+  class TraceTracker {
+
+    /* CMU-ONLY-BLOCK-BEGIN */
+    SharingTracker * theSharingTracker;
+    Flexus::SharedTypes::tFillLevel theBaseSharingLevel;
+
+    int theBlockSize;
+    bool theSgpEnabled;
+    std::vector< Flexus::SharedTypes::tFillLevel > theCurrLevels;
+    std::set<Flexus::SharedTypes::tFillLevel> theSgpLevels;
+    std::vector< std::vector< NodeEntry* > > theSGPs;
+    bool theGhbEnabled;
+    std::set<Flexus::SharedTypes::tFillLevel> theGhbLevels;
+    std::vector< std::vector< GhbEntry* > > theGHBs;
+    bool thePrefetchTracking;
+    std::vector< PrefetchTracker* > thePrefetchTrackers;
+    bool theSgpTracking;
+    std::vector< SgpTracker* > theSgpTrackers;
+    int theCacheSize, theCacheAssoc, theCacheBlockShift;
+    std::vector< SimCacheEntry* > theSimCaches;
+    /* CMU-ONLY-BLOCK-END */
+
+	public:
+		void access      (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t addr, address_t pc, bool prefetched, bool write, bool miss, bool priv, unsigned long long ltime);
+    void commit      (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t addr, address_t pc, unsigned long long ltime);
+    void store       (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t addr, address_t pc, bool miss, bool priv, unsigned long long ltime);
+    void prefetch    (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void fill        (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, Flexus::SharedTypes::tFillLevel fillLevel, bool isFetch, bool isWrite);
+    void prefetchFill(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, Flexus::SharedTypes::tFillLevel fillLevel);
+    void prefetchHit (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, bool isWrite);
+    void prefetchRedundant(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void parallelList(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, std::set<unsigned long long> & aParallelList); /* CMU-ONLY */
+    void insert      (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void eviction    (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, bool drop);
+    void invalidation(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void invalidAck  (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void invalidTagCreate (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void invalidTagRefill (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    void invalidTagReplace(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block);
+    /* CMU-ONLY-BLOCK-BEGIN */
+    void beginSpatialGen  (int aNode, address_t block);
+    void endSpatialGen    (int aNode, address_t block);
+    void sgpPredict       (int aNode, address_t group, void * aPredictSet);
+    /* CMU-ONLY-BLOCK-END */
+
+    void accessLoad  (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, unsigned long offset, int size);
+    void accessStore (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, unsigned long offset, int size);
+    void accessFetch (int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, unsigned long offset, int size);
+    void accessAtomic(int aNode, Flexus::SharedTypes::tFillLevel cache, address_t block, unsigned long offset, int size);
+
+    TraceTracker();
+    void initialize();
+    void finalize();
+
+    /* CMU-ONLY-BLOCK-BEGIN */
+    void initOffChipTracking(int aNode);
+    void initSGP(int aNode, Flexus::SharedTypes::tFillLevel aLevel,
+                 bool enableUsage, bool enableRepet, bool enableBufFetch,
+                 bool enableTimeRepet, bool enablePrefetch, bool enableActive,
+                 bool enableOrdering, bool enableStreaming,
+                 int blockSize, int sgpBlocks, int repetType, bool repetFills,
+                 bool sparseOpt, int phtSize, int phtAssoc, int pcBits,
+                 int cptType, int cptSize, int cptAssoc, bool cptSparse,
+                 bool fetchDist, int streamWindow, bool streamDense, bool sendStreams,
+                 int bufSize, int streamDescs, bool delayedCommits, int cptFilterSize);
+    void saveSGP(int aNode, Flexus::SharedTypes::tFillLevel aLevel, std::string const & aDirName);
+    void loadSGP(int aNode, Flexus::SharedTypes::tFillLevel aLevel, std::string const & aDirName);
+    bool prefetchReady(int aNode, Flexus::SharedTypes::tFillLevel aLevel);
+    address_t getPrefetch(int aNode, Flexus::SharedTypes::tFillLevel aLevel);
+    boost::intrusive_ptr<Flexus::SharedTypes::PrefetchCommand> getPrefetchCommand(int aNode, Flexus::SharedTypes::tFillLevel aLevel);
+    void initGHB(int aNode, Flexus::SharedTypes::tFillLevel aLevel, int blockSize, int ghbSize);
+    bool ghbPrefetchReady(int aNode, Flexus::SharedTypes::tFillLevel aLevel);
+    address_t ghbGetPrefetch(int aNode, Flexus::SharedTypes::tFillLevel aLevel);
+    void enablePrefetchTracking(int aNode);
+    void enableSgpTracking(int aNode, int blockSize, int sgpBlocks);
+    bool simCacheAccess(int aNode, address_t addr, bool write);
+    bool simCacheInval(int aNode, address_t addr);
+
+    void initSharing(int numNodes, long blockSize, Flexus::SharedTypes::tFillLevel aLevel);
+    /* CMU-ONLY-BLOCK-END */
+
+	};
+
+} // namespace nTraceTracker
+
+extern nTraceTracker::TraceTracker theTraceTracker;
+
+#endif

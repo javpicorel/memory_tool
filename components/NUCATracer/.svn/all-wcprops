@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svn/parsa/!svn/ver/514/flexus/branches/nikos-nuca/components/NUCATracer
+END
+trace.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/parsa/!svn/ver/418/flexus/branches/nikos-nuca/components/NUCATracer/trace.cpp
+END
+coordinator.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/svn/parsa/!svn/ver/419/flexus/branches/nikos-nuca/components/NUCATracer/coordinator.cpp
+END
+trace.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svn/parsa/!svn/ver/301/flexus/branches/nikos-nuca/components/NUCATracer/trace.hpp
+END
+coordinator.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/svn/parsa/!svn/ver/301/flexus/branches/nikos-nuca/components/NUCATracer/coordinator.hpp
+END
+NUCATracerImpl.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svn/parsa/!svn/ver/514/flexus/branches/nikos-nuca/components/NUCATracer/NUCATracerImpl.cpp
+END
+NUCATracer.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/svn/parsa/!svn/ver/323/flexus/branches/nikos-nuca/components/NUCATracer/NUCATracer.hpp
+END
+common.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/svn/parsa/!svn/ver/319/flexus/branches/nikos-nuca/components/NUCATracer/common.hpp
+END

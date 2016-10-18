@@ -1,0 +1,54 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/LocalEngine
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+LocalEngineImpl.cpp
+file
+
+
+
+
+2009-11-02T14:31:03.000000Z
+8294e11acd124010e1ff887e99e24bee
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+LocalEngine.hpp
+file
+
+
+
+
+2009-11-02T14:31:03.000000Z
+958aee3ae776a771629beabb450b0e88
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

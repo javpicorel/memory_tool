@@ -1,0 +1,52 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/PerfectPlacement
+svn://coleburn.ece.cmu.edu
+
+
+
+2009-10-09T14:05:19.780689Z
+651
+mferdman
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+PerfectPlacementImpl.cpp
+file
+
+
+
+
+2009-11-02T14:30:44.000000Z
+25fef34846225cab7f84acc9ac3763e2
+2009-10-09T14:05:19.780689Z
+651
+mferdman
+
+PerfectPlacement.hpp
+file
+
+
+
+
+2009-11-02T14:30:44.000000Z
+2b658926563081363016ad1621524266
+2009-10-09T14:05:19.780689Z
+651
+mferdman
+

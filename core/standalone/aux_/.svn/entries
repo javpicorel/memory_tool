@@ -1,0 +1,41 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/core/standalone/aux_
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+simics_command_manager.cpp
+file
+
+
+
+
+2009-11-02T14:31:25.000000Z
+9b3ba5e4819632d88e85222ef225e408
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

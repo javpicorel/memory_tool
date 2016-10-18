@@ -1,0 +1,88 @@
+#!/bin/bash
+export RM="rm -rf"
+
+set -x
+
+RELEASE=$PWD/../release
+if [ -e $RELEASE ]; then
+	echo "$RELEASE directory exists"
+	exit
+fi
+
+rsync -a $PWD/ $RELEASE/
+cd $RELEASE/
+
+$RM TODO all_haps.py asm_regress asm_regress_all *.trace.cfg db.debug.cfg interactive postgres-debug.cfg regress_workarea regress_workarea_ckpt todo.txt
+$RM doxygen.config.template run_workload
+
+$RM experimental lordalyzer order order_hw protocol_engines_stand_alone sordalyzer sordperconsalyzer stridalyzer trace-dgp nucalyze nucalyzer
+$RM debug.cfg insert-copyright splash.debug.cfg simprint.h
+$RM simics
+$RM components/Consort components/DGP components/Decode components/DirTracker components/EnhancedSordTraceMemory components/FcmpCache components/InorderTraceFeeder components/MRCReflector components/MRP components/MemHarness components/Network components/PrefetchBuffer components/PrefetchListener components/RandomFeeder components/Rdram components/RealExecute components/SMTFetch components/SimicsFeeder components/SimicsMPTraceFeeder components/SimicsMemory components/SimicsTraceFeeder components/SordManager components/SordPredictor components/SordReceiver components/SordTraceMemory components/TRUSS_BWFetch components/TraceFeeder components/Truss* components/VirtutechTraceFeeder components/X86SimicsFeeder components/CacheTraceMemory components/CmpMCNetworkInterface
+$RM components/PowerTracker
+$RM components/OrderHW components/PerfectPlacement
+$RM components/ReuseDistance components/MissClassifier components/SMTFetch components/SVB
+$RM components/SimplePrefetchController components/SpatialPrefetcher
+$RM components/StreamController components/FastSpatialPrefetcher components/StridePrefetcher
+$RM components/uArch/CoreModel/bbv.?pp
+$RM components/CMOB
+$RM components/TMS*
+$RM components/uArch/CoreModel/purge.cpp
+cd components
+cd Common
+$RM OneWayMux.hpp OneWayMuxImpl.*
+$RM SetAssoc*.hpp
+$RM JustMissedYou.hpp
+$RM Slices/MRCMessage.?pp
+$RM Slices/PrefetchCommand.?pp
+$RM Slices/PrefetchMessage.?pp
+$RM Slices/PredictorMessage.?pp
+$RM Slices/PerfectPlacementSlice.?pp
+$RM Slices/ReuseDistanceSlice.?pp
+$RM Transports/PrefetchTransport.?pp
+$RM Transports/PredictorTransport.?pp
+cd ..
+cd ..
+cd components
+cd Cache
+$RM FCMPCacheControllerImpl.*
+cd ..
+cd ..
+cd core
+$RM doxygen.config
+$RM fast_alloc.?pp
+$RM debug.cfg
+cd ..
+cd simulators
+$RM chimaera cyclops dirtest echidna enhsorder eyeball gorgon gorgon16 hydra hydricache incubus kraken mimic mrptracer networktest octopus platt ptap simicsmptracer simicstracer siren siren8 slooo sorder sphinx sphinx8 succubus tracenhsorder tracer unikrak unimp unimp2 vampire vampire16 wonderpus x86hydra x86siren x86sphinx
+$RM OrderHWFlex TSEFlex TraceSGPFlex TraceCMTFlex TraceDSMCMPFlex Trace2SGPFlex minotaur minotaur2 SGPDSMFlex SGPDSMFlex.OoO SGP2DSMFlex.OoO OrderHWCMPFlex TMSCMPFlex.OoO TraceTMSCMPFlex CMTNUCAFlex.OoO TraceCMPPerfFlex TraceCMPPrivateFlex
+
+$RM CMTFlex*
+cd ..
+$RM stat-manager/stats_db.out stat-manager/cache-excel.rpt stat-manager/time-breakdown.rpt stat-manager/*stats_o
+$RM run_job.faq
+
+mv -f makefile.pristine makefile.defs
+
+# For all files, remove CMU only blocks
+FILES=`find . -name "*.hpp" -o -name "*.cpp"`
+for file in $FILES; do
+  sed -e "/CMU-ONLY-BLOCK-BEGIN/,/CMU-ONLY-BLOCK-END/ d" < $file > $file.tmp
+  sed -e "/ CMU-ONLY / d" < $file.tmp > $file
+  rm $file.tmp
+done
+
+# For all directories, remove .svn directory
+DIRS=`find . -name ".svn"`
+for dir in $DIRS; do 
+	$RM $dir 
+done
+
+# chmod a-x Makefile cmu-copyright
+# chmod a-x *.*
+# chmod a-x */*.*
+# chmod a-x */*/*.*
+# chmod a-x */*/*/*.*
+# chmod a-x */*/*/*/*.*
+# chmod a+x simulators/*.OoO
+# chmod a-x simulators/*/*

@@ -1,0 +1,43 @@
+Flexus 1.0.1  6/4/2005
+  Release Manager: Stephen Somogyi
+  - Initial public release
+
+Flexus 1.0.2  6/26/2005
+  Release Manager: Tom Wenisch
+  - x86 support added to InorderSimicsFeeder and UniFlex (in-order only)
+    build with "make UniFlex-x86"
+  - Fixed incorrect default configuration settings in UniFlex and UniFlex.OoO
+    that could lead to Cache assertions when running self-modifying code
+  - Reduced header file include dependencies
+  - Changed deque to lists in Common/MessageQueues
+  - Turned off built-in profiling by default - ~7% faster
+
+Flexus 2.0.0  11/9/2005
+  Release Manager: Tom Wenisch
+  - Add the no-timing simulators TraceFlex and TraceCMPFlex for checkpoint
+    creation and rapid cache studies.  150x faster than OoO!
+  - Add DSMFlex and distributed shared memory components to public release
+  - Enhanced debug support.  You can now filter debug messages based on
+    category and source component from the Simics console. See the help text
+    for flexus.debug-* in Simics.
+  - Enhancements to stat-manager for sampling.  We now have stat-collapse and
+    stat-sample tools that combine measurement regions within a stats file,
+    and produce aggregate statistics/confidence intervals across stats files
+    for sampled simulations.
+  - Bug fixes to InorderSimicsFeeder for x86 simulation
+
+Flexus 2.1.0 6/15/2006
+  Release Manager: Tom Wenisch
+  - New Getting Started Guide and flexus-test-app 
+  - Support for Fedora Core linux distributions
+  - Support for emulating in-order superscalar and multithreading with OoO core
+  - More detailed cache controller timing model.
+
+Flexus 3.0.0 11/9/2007
+  Release Manager: Evangelos Vlachos
+  - Support for Simics 3.0.X versions
+  - Support for Fedora Core 7
+  - New Getting Started Guide
+  - Support for simulating Solaris 10 under SPARC architectures
+  - Bug fixes to InorderSimicsFeeder for x86 simulation
+

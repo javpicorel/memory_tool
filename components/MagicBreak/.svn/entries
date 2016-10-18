@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wc-entries
+   xmlns="svn:">
+<entry
+   committed-rev="486"
+   name=""
+   committed-date="2008-02-07T02:12:39.520294Z"
+   url="svn://glenkinchie/flexus/trunk/components/MagicBreak"
+   last-author="mferdman"
+   kind="dir"
+   uuid="bba339f7-f209-0410-a72e-d32cac62bad2"
+   repos="svn://glenkinchie"
+   prop-time="2008-07-27T17:36:07.000000Z"
+   revision="560"/>
+<entry
+   committed-rev="446"
+   name="breakpoint_tracker.hpp"
+   text-time="2008-07-27T17:36:07.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="d954081f9061714c8e9efa1cd271678b"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:07.000000Z"/>
+<entry
+   committed-rev="446"
+   name="Makefile.MagicBreak"
+   text-time="2008-07-27T17:36:08.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="ae93b456cdf76255b0dba9c49acede4b"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:07.000000Z"/>
+<entry
+   committed-rev="446"
+   name="MagicBreakImpl.cpp"
+   text-time="2008-07-27T17:36:08.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="f1e82c1388057bbf0c9cd7f3c6df740c"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:07.000000Z"/>
+<entry
+   committed-rev="486"
+   name="breakpoint_tracker.cpp"
+   text-time="2008-07-27T17:36:08.000000Z"
+   committed-date="2008-02-07T02:12:39.520294Z"
+   checksum="a3d8b89e73e6cb5ee58165b2e00fe018"
+   last-author="mferdman"
+   kind="file"
+   prop-time="2008-07-27T17:36:07.000000Z"/>
+<entry
+   committed-rev="446"
+   name="MagicBreak.hpp"
+   text-time="2008-07-27T17:36:08.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="25e0aab1536359e0d4c48ab5742bb6c9"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:07.000000Z"/>
+</wc-entries>

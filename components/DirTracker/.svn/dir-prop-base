@@ -1,0 +1,18 @@
+K 10
+svn:ignore
+V 111
+*_gcc_o
+*_gcc_dep
+*_gcc
+*.stats_o
+*_gcc.so
+*.depend.v9_iface_gcc
+*.a
+*.rom
+*.mcd_lnk
+he.ps
+re.ps
+he.lst
+re.lst
+
+END

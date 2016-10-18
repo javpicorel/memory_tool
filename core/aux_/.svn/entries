@@ -1,0 +1,40 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/core/aux_
+svn://coleburn.ece.cmu.edu
+
+
+
+2009-05-25T19:01:04.099937Z
+638
+mferdman
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+wiring
+dir
+
+registration
+dir
+
+layout
+dir
+
+stats
+dir
+

@@ -1,0 +1,54 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/TrussBWFetch
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+TrussBWFetch.hpp
+file
+
+
+
+
+2009-11-02T14:30:44.000000Z
+6e93a5c60335245dfa3e64d4674c5664
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+TrussBWFetchImpl.hpp
+file
+
+
+
+
+2009-11-02T14:30:44.000000Z
+d417ef98167543bfd35662834cfb03ff
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

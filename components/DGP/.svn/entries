@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wc-entries
+   xmlns="svn:">
+<entry
+   committed-rev="446"
+   name=""
+   committed-date="2007-11-13T02:06:49.260006Z"
+   url="svn://glenkinchie/flexus/trunk/components/DGP"
+   last-author="evlachos"
+   kind="dir"
+   uuid="bba339f7-f209-0410-a72e-d32cac62bad2"
+   repos="svn://glenkinchie"
+   prop-time="2008-07-27T17:36:04.000000Z"
+   revision="560"/>
+<entry
+   committed-rev="446"
+   name="DgpStats.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="3cc0af0626e8eba7a6b5e4fa4d3623c3"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DGP.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="56c6a328e7dfede04eab0044b8983414"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpHistTable.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="90ba64e224623491d40039a1078f075b"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpSigTableTypes.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="b3953c72a79100082fb127606d27750e"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DGPImpl.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="aa94a3729a0b2dcc68826c6088fde90f"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpPredTable.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="411adf1f8898932391782b96da97ee8d"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpSigTablePolicies.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="d2d4f0e7248dd0899c26b032e3b763bf"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpMain.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="9f64087b05d6c170c831a742d6d3feed"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpStoreTable.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="9a7ae21915f3a9812c9717b87729fa83"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpInfSigTable.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="d8ca9e77fcd9cfbe2c4f68f7965b80ee"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpCommon.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="69c25c537192c1bb3a0457b1724587ac"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+<entry
+   committed-rev="446"
+   name="DgpSigTable.hpp"
+   text-time="2008-07-27T17:36:04.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="423144baa526f3ea8d7de7b438d8db84"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:04.000000Z"/>
+</wc-entries>

@@ -1,0 +1,54 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/MRCReflector
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+MRCReflectorImpl.cpp
+file
+
+
+
+
+2009-11-02T14:30:57.000000Z
+fe5433eee42fefe93b6a233238b27169
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+MRCReflector.hpp
+file
+
+
+
+
+2009-11-02T14:30:57.000000Z
+d40ed71c6ba45612a2df1c7487e35f1b
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

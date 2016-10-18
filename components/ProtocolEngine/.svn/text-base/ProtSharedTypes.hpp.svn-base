@@ -1,0 +1,129 @@
+// DO-NOT-REMOVE begin-copyright-block 
+//                                     
+// Redistributions of any form whatsoever must retain and/or include the     
+// following acknowledgment, notices and disclaimer:                         
+//                                                                           
+// This product includes software developed by Carnegie Mellon University.   
+//                                                                           
+// Copyright 2006 - 2008 by Eric Chung, Michael Ferdman, Brian Gold, Nikos   
+// Hardavellas, Jangwoo Kim, Ippokratis Pandis, Minglong Shao, Jared Smolens,
+// Stephen Somogyi, Evangelos Vlachos, Tom Wenisch, Anastassia Ailamaki,     
+// Babak Falsafi and James C. Hoe for the SimFlex Project, Computer          
+// Architecture Lab at Carnegie Mellon, Carnegie Mellon University.          
+//                                                                           
+// For more information, see the SimFlex project website at:                 
+//   http://www.ece.cmu.edu/~simflex                                         
+//                                                                           
+// You may not use the name 'Carnegie Mellon University' or derivations      
+// thereof to endorse or promote products derived from this software.        
+//                                                                           
+// If you modify the software you must place a notice on or within any       
+// modified version provided or made available to any third party stating    
+// that you have modified the software.  The notice shall include at least   
+// your name, address, phone number, email address and the date and purpose  
+// of the modification.                                                      
+//                                                                           
+// THE SOFTWARE IS PROVIDED 'AS-IS' WITHOUT ANY WARRANTY OF ANY KIND, EITHER 
+// EXPRESS, IMPLIED OR STATUTORY, INCLUDING BUT NOT LIMITED TO ANY WARRANTY  
+// THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS OR BE ERROR-FREE AND ANY 
+// IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,  
+// TITLE, OR NON-INFRINGEMENT.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY 
+// BE LIABLE FOR ANY DAMAGES, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, 
+// SPECIAL OR CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN   
+// ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY, 
+// CONTRACT, TORT OR OTHERWISE).                                             
+//                                     
+// DO-NOT-REMOVE end-copyright-block   
+
+#ifndef _PROT_SHARED_TYPES_H_
+#define _PROT_SHARED_TYPES_H_
+
+#include <iostream>
+#include <core/boost_extensions/intrusive_ptr.hpp>
+#include <core/types.hpp>
+
+
+using boost::counted_base;
+
+#include <components/Common/Slices/ProtocolMessage.hpp>
+#include <components/Common/Slices/DirectoryEntry.hpp>
+#include <components/Common/Slices/TransactionTracker.hpp>
+
+namespace nProtocolEngine {
+
+  using namespace Flexus::SharedTypes;
+
+  typedef Flexus::SharedTypes::PhysicalMemoryAddress tAddress;
+  typedef Flexus::SharedTypes::ProtocolMessage tPacket;
+  typedef Flexus::SharedTypes::Protocol::ProtocolMessageType tMessageType;
+  typedef Flexus::SharedTypes::DirectoryEntry tDirEntry;
+
+  // data source for sending a message
+  enum tSendMsgDataSrc {
+    SEND_MSG_NO_DATA,
+    SEND_MSG_DATA_FROM_MEM,
+    SEND_MSG_DATA_FROM_CACHE    // data from cache line or writeback buffer
+  };
+  std::ostream & operator << (std::ostream & anOstream, tSendMsgDataSrc const aDataSrc);
+
+  // type of cpu operation
+  enum tCpuOpType {
+    CPU_INVALIDATE,
+    CPU_DOWNGRADE,
+    MISS_REPLY,
+    MISS_WRITABLE_REPLY,
+    UPGRADE_REPLY,
+    PREFETCH_READ_REPLY
+  };
+
+  std::ostream & operator << (std::ostream & anOstream, tCpuOpType const anOp);
+
+
+  // Indicate whether the cpu operation carries data
+  // If so, specify the source
+  typedef enum tCpuOpDataSrc {
+    NO_DATA,
+    DATA_FROM_MEM,
+    DATA_FROM_MSG
+  } tCpuOpDataSrc;
+
+  std::ostream & operator << (std::ostream & anOstream, tCpuOpDataSrc const aDataSrc);
+
+
+  // lock operation type
+  enum tLockOpType {
+    LOCK,
+    UNLOCK,
+    LOCK_SQUASH
+  } ;
+
+  std::ostream & operator << (std::ostream & anOstream, tLockOpType const x);
+
+
+  // memory operation type
+  enum tMemOpType {
+    READ,
+    WRITE,
+    MEM_LOCK,
+    MEM_UNLOCK,
+    MEM_LOCK_SQUASH
+  };
+
+  std::ostream & operator << (std::ostream & anOstream, tMemOpType const x);
+
+
+  // memory operation destination
+  // implicitly define the data source (message)
+  typedef enum tMemOpDest {
+    DIRECTORY,
+    DATA_FROM_MESSAGE,
+    DIRECTORY_AND_DATA_FROM_MESSAGE
+  } tMemOpDest;
+
+  std::ostream & operator << (std::ostream & anOstream, tMemOpDest const x);
+
+
+} // namespace nProtocolEngine
+
+
+#endif  // _PROT_SHARED_TYPES_H_

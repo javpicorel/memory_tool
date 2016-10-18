@@ -1,0 +1,310 @@
+#!/bin/bash
+
+
+###########
+# Useful functions
+###########
+log() {
+  echo $1
+}
+
+###########
+# Constants
+###########
+
+USER=`whoami`
+ORIGINAL_WD=`pwd`
+
+AFS_BASE_DIR=/afs/scotch.ece.cmu.edu/project/scaffold/regress
+
+
+###########
+# Check Parameters
+###########
+
+CHECKOUT_DIR=.
+USER_CFG=interactive
+TRACE_REQUESTED=0
+USE_SCAFFOLD=1
+USE_SIMICS2=1
+NO_REPORT=1
+REPORT_DIR=noreport
+CUSTOM_REQUESTED=0
+SIMICS_PARAMS=-stall
+CPU_COUNT=1
+INTERACTIVE=0
+while [[ ${1:0:1} == "-" ]] ; do
+  case $1 in
+    "-cpu" )
+      CPU_COUNT=$2
+      shift
+      shift
+      ;;
+    "-trace" )
+      TRACE_REQUESTED=1
+      TRACE_CYCLE=$2
+      shift
+      shift
+      ;;
+    "-cfg" )
+      USER_CFG=$2
+      shift
+      shift
+      ;;
+    "-noscaffold" )
+      USE_SCAFFOLD=0
+      shift
+      ;;
+    "-interactive" )
+      INTERACTIVE=1
+      shift
+      ;;
+    "-nosimics2" )
+      USE_SIMICS2=0
+      shift
+      ;;
+    "-report" )
+      NO_REPORT=0
+      REPORT_DIR=$2
+      shift
+      shift
+      ;;
+    "-ma" )
+      SIMICS_PARAMS="-ma"
+      shift
+      ;;
+    "-nowin" )
+      SIMICS_PARAMS="$SIMICS_PARAMS -no-win"
+      shift
+      ;;
+    "-custom" )
+      CUSTOM_REQUESTED=1
+      CUSTOM_SCRIPT=$2
+      shift
+      shift
+      ;;
+    * )
+      echo "Unknown option $1"
+      shift
+      ;;
+    esac
+done
+
+
+
+if [[ $# -eq 0 ]] ; then
+  echo "asm_regress [options] <simulator> <test>"
+  exit
+fi
+
+if [[ $USE_SCAFFOLD -eq 1 ]] ; then
+  TARGET=$1
+  shift
+  SIMULATOR=${TARGET%%-*}
+  DBG=${TARGET#$SIMULATOR-}
+else
+  SIMULATOR="noscaffold"
+  DBG=""
+fi
+
+JOB_SPEC=$1
+
+RUN=$USER-$REPORT_DIR
+JOB_DIR=/home/regress/$RUN
+
+JOB_SPEC_DIR=$AFS_BASE_DIR/job-specs/regress_sol8_${CPU_COUNT}cpu
+if [[ $INTERACTIVE -eq 1 ]] ; then
+  GLOBAL_SPEC_DIR=$AFS_BASE_DIR/job-specs/global-interactive
+else
+  GLOBAL_SPEC_DIR=$AFS_BASE_DIR/job-specs/global
+fi
+USER_SPEC_DIR=$AFS_BASE_DIR/user-specs/$USER/$USER_CFG
+
+if [[ $USE_SIMICS2 -eq 0 ]] ; then
+    SIMICS_BASE=/afs/scotch/project/simics/simics
+    SIMICS_TYPE=$(< $JOB_SPEC_DIR/simics_distro)
+else
+    SIMICS_BASE=/afs/scotch/project/simics/simics-2.2.12
+    SIMICS_TYPE=   # empty since type doesn't matter in 2.0
+fi
+
+if [[ $TARGET == "" && $USE_SCAFFOLD -eq 1 ]] ; then
+
+  echo "Must specify a built simulator to run interactively"
+  exit
+fi
+
+if [[ $JOB_SPEC == "" ]] ; then
+  echo "Must specify an asm-test to run"
+  exit
+fi
+
+if [[ ! -e $JOB_SPEC_DIR/wd/$JOB_SPEC.cpp ]] ; then
+  echo "$JOB_SPEC is not a valid test"
+  exit
+fi
+
+
+log "Running asm regression test run of $JOB_SPEC on $CPU_COUNT cpus with $TARGET in $JOB_DIR"
+
+###########
+# Check Build
+###########
+
+if [[ $USE_SCAFFOLD -eq 1 ]] ; then
+  LIB_COUNT=`ls -1 $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG* | wc -l`
+  if [[ $LIB_COUNT -gt 1 ]] ; then
+    log "More than one simulator binary is built.  Don't know which one to use."
+  fi
+
+  LIBRARY=`ls $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG*`
+  if [[ $? -ne 0 ]] ; then
+    log "No $SIMULATOR binary found"
+    exit
+  fi
+fi
+
+##########
+# Prepare JOB_DIR
+##########
+rm -rf $JOB_DIR
+mkdir -p $JOB_DIR
+
+cp -rs $SIMICS_BASE/$SIMICS_TYPE $JOB_DIR/simics
+rm -rf $JOB_DIR/simics/x86-linux/bin
+cp -r $SIMICS_BASE/$SIMICS_TYPE/x86-linux/bin $JOB_DIR/simics/x86-linux/bin
+rm -f $JOB_DIR/simics/x86-linux/lib/libflexus*
+
+##########
+# Place built binary and other files in JOB_DIR
+##########
+if [[ $USE_SCAFFOLD -eq 1 ]] ; then
+   cp $LIBRARY $JOB_DIR/simics/x86-linux/lib
+fi
+mkdir -p $JOB_DIR/exec
+if [[ $USE_SCAFFOLD -eq 1 ]] ; then
+   cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.rom $JOB_DIR/exec
+	 cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.topology $JOB_DIR/exec
+fi
+cp -rL $GLOBAL_SPEC_DIR/wd/* $JOB_DIR/exec
+cp -rL $JOB_SPEC_DIR/wd/* $JOB_DIR/exec
+cp -rL $USER_SPEC_DIR/* $JOB_DIR/exec
+
+# cheap hack to remove all scaffold-based commands if noscaffold is used
+if [[ $USE_SCAFFOLD -eq 0 ]] ; then
+   mv $JOB_DIR/exec/start{.noscaffold,}.simics
+fi
+
+# cheap hack to use simics-2.0 scripts (diff checkpoints)
+## assumes first line of job-preload is the read-configuration line!
+if [[ $USE_SIMICS2 -eq 1 ]] ; then
+  # remove the $1 from go.sh
+  sed -e "s/\$1/$SIMICS_PARAMS/" < $JOB_DIR/exec/go.sh > $JOB_DIR/exec/tmp
+  mv $JOB_DIR/exec/{tmp,go.sh}
+  chmod a+x $JOB_DIR/exec/go.sh
+
+  # make a new 'simics' file
+  echo '#!/bin/sh' > $JOB_DIR/exec/simics
+  echo 'exec ./go.sh' >> $JOB_DIR/exec/simics
+
+  # add baseline-postload.simics to start.simics file
+  sed -e "s/global-postload.simics/global-postload.simics\nrun-command-file baseline-postload.simics/" < $JOB_DIR/exec/start.simics > $JOB_DIR/exec/tmp
+  mv $JOB_DIR/exec/{tmp,start.simics}
+
+  # the syntax has changed for scaffold.add-debug to add-debug-cfg
+  sed -e "s/add-debug/add-debug-cfg/" < $JOB_DIR/exec/global-postload.simics > $JOB_DIR/exec/tmp
+  mv $JOB_DIR/exec/{tmp,global-postload.simics}
+fi
+
+
+if [[ $CUSTOM_REQUESTED -eq 1 ]] ; then
+  cp $CUSTOM_SCRIPT $JOB_DIR/exec
+  echo "echo \"installing custom script\"" >> $JOB_DIR/exec/start.simics
+  echo "run-command-file $CUSTOM_SCRIPT" >> $JOB_DIR/exec/start.simics
+fi
+
+##########
+# Write load.simics script
+##########
+if [[ $USE_SCAFFOLD -eq 1 ]] ; then
+   TEMP1=${LIBRARY##*lib}
+   TEMP2=${TEMP1%.so}
+   MODULE=${TEMP2//_/-}
+   echo "load-module $MODULE" > $JOB_DIR/exec/load.simics
+fi
+
+###########
+# For trace jobs, enable tracing
+###########
+if [[ $TRACE_REQUESTED -eq 1 ]] ; then
+  log "Enabling tracing at $TRACE_CYCLE (uses interactive-trace-debug.cfg)"
+  sed -e "s/xxBEGIN_CYCLE_COUNTxx/$TRACE_CYCLE/" < $JOB_DIR/exec/interactive-trace-debug.cfg > $JOB_DIR/exec/debug.cfg
+fi
+
+##########
+# Fill the name of the test into compile
+##########
+  sed -e "s:xxSOURCE_FILExx:$JOB_SPEC.cpp:" < $JOB_DIR/exec/compile.orig > $JOB_DIR/exec/compile
+
+##########
+# Enable regression testing if not interactive or noscaffold
+##########
+if [[ $INTERACTIVE -eq 0 && $USE_SCAFFOLD -eq 1 ]] ; then
+  echo "regression_testing.enable" >> $JOB_DIR/exec/job-postload.simics
+fi
+
+############
+# Prepare job checkpoint
+############
+log "Preparing job checkpoint"
+cd $JOB_DIR/exec
+if [[ $INTERACTIVE -eq 1 ]] ; then
+  ./prepare-interactive.sh
+else
+  ./prepare.sh
+fi
+
+############
+# fix up cpu switch time, where necessary
+log "Setting cpu switch time"
+sed -e "s/0xf1234/1/g" < asm_regress > temp
+mv temp asm_regress
+
+############
+# Start job
+############
+log "Launching job"
+cd $JOB_DIR/exec
+./simics
+
+###########
+# Check test result
+###########
+./validate.py $JOB_SPEC
+FAILED=$?
+if [[ $NO_REPORT -eq 1 ]] ; then
+  if [[ $FAILED -eq 0 ]] ; then
+     echo "$JOB_SPEC passed"
+  else
+     cat $JOB_SPEC.report
+  fi
+else
+  REPORT=$ORIGINAL_WD/$REPORT_DIR/summary
+  mkdir -p $ORIGINAL_WD/$REPORT_DIR
+  if [[ $FAILED -eq 0 ]] ; then
+     echo "    $JOB_SPEC passed" >> $REPORT
+  else
+     echo "*** $JOB_SPEC failed" >> $REPORT
+     mkdir -p $ORIGINAL_WD/$REPORT_DIR/$JOB_SPEC
+     cp $JOB_SPEC.report $ORIGINAL_WD/$REPORT_DIR/$JOB_SPEC/${JOB_SPEC##*/}.report
+     cp *.out $ORIGINAL_WD/$REPORT_DIR/$JOB_SPEC
+  fi
+fi
+
+
+##########
+# Clean Exit
+##########
+cd $ORIGINAL_WD
+
+exit $FAILED

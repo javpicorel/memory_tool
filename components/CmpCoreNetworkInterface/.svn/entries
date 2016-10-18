@@ -1,0 +1,52 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/CmpCoreNetworkInterface
+svn://coleburn.ece.cmu.edu
+
+
+
+2009-10-13T23:11:18.061049Z
+655
+mferdman
+
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+CmpCoreNetworkInterfaceImpl.cpp
+file
+
+
+
+
+2009-11-02T14:31:07.000000Z
+bfdaf71db1b035250dd7e8db886d8a53
+2009-10-13T23:11:18.061049Z
+655
+mferdman
+
+CmpCoreNetworkInterface.hpp
+file
+
+
+
+
+2009-11-02T14:31:07.000000Z
+f5ec06472c355e43b2627b5d31d7d6f9
+2009-10-13T23:11:18.061049Z
+655
+mferdman
+

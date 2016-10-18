@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wc-entries
+   xmlns="svn:">
+<entry
+   committed-rev="487"
+   name=""
+   committed-date="2008-02-07T19:21:58.851353Z"
+   url="svn://glenkinchie/flexus/trunk/components/FastBus"
+   last-author="bgold"
+   kind="dir"
+   uuid="bba339f7-f209-0410-a72e-d32cac62bad2"
+   repos="svn://glenkinchie"
+   prop-time="2008-07-27T17:36:25.000000Z"
+   revision="560"/>
+<entry
+   committed-rev="487"
+   name="FastBusImpl.cpp"
+   text-time="2008-07-27T17:36:25.000000Z"
+   committed-date="2008-02-07T19:21:58.851353Z"
+   checksum="6adeb169da7c5a2b62f88c2c7e6ae6d9"
+   last-author="bgold"
+   kind="file"
+   prop-time="2008-07-27T17:36:25.000000Z"/>
+<entry
+   committed-rev="446"
+   name="FastBus.hpp"
+   text-time="2008-07-27T17:36:25.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="7017305e32ee2ee99ab2c42920aa5ab5"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:36:25.000000Z"/>
+</wc-entries>

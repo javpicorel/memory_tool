@@ -1,0 +1,54 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/core/simics/aux_
+svn://coleburn.ece.cmu.edu
+
+
+
+2009-05-25T19:01:04.099937Z
+638
+mferdman
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+simics_command_manager.cpp
+file
+
+
+
+
+2009-11-02T14:31:24.000000Z
+8f68c14d4d3e3ae41b50ecba16a4e130
+2009-05-25T19:01:04.099937Z
+638
+mferdman
+has-props
+
+simics_command_manager.hpp
+file
+
+
+
+
+2009-11-02T14:31:24.000000Z
+d4640bb45f48b08fc06fbf1cafeb70da
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

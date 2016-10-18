@@ -1,0 +1,67 @@
+#!/bin/bash
+
+print_header () {
+  FILE=$1
+  SYM=$2
+  echo "$SYM DO-NOT-REMOVE begin-copyright-block ">  $FILE
+  echo "$SYM                                     ">> $FILE
+  echo "$SYM Redistributions of any form whatsoever must retain and/or include the     ">> $FILE
+  echo "$SYM following acknowledgment, notices and disclaimer:                         ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM This product includes software developed by Carnegie Mellon University.   ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM Copyright 2006 - 2008 by Eric Chung, Michael Ferdman, Brian Gold, Nikos   ">> $FILE
+  echo "$SYM Hardavellas, Jangwoo Kim, Ippokratis Pandis, Minglong Shao, Jared Smolens,">> $FILE
+  echo "$SYM Stephen Somogyi, Evangelos Vlachos, Tom Wenisch, Anastassia Ailamaki,     ">> $FILE
+  echo "$SYM Babak Falsafi and James C. Hoe for the SimFlex Project, Computer          ">> $FILE
+  echo "$SYM Architecture Lab at Carnegie Mellon, Carnegie Mellon University.          ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM For more information, see the SimFlex project website at:                 ">> $FILE
+  echo "$SYM   http://www.ece.cmu.edu/~simflex                                         ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM You may not use the name 'Carnegie Mellon University' or derivations      ">> $FILE
+  echo "$SYM thereof to endorse or promote products derived from this software.        ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM If you modify the software you must place a notice on or within any       ">> $FILE
+  echo "$SYM modified version provided or made available to any third party stating    ">> $FILE
+  echo "$SYM that you have modified the software.  The notice shall include at least   ">> $FILE
+  echo "$SYM your name, address, phone number, email address and the date and purpose  ">> $FILE
+  echo "$SYM of the modification.                                                      ">> $FILE
+  echo "$SYM                                                                           ">> $FILE
+  echo "$SYM THE SOFTWARE IS PROVIDED 'AS-IS' WITHOUT ANY WARRANTY OF ANY KIND, EITHER ">> $FILE
+  echo "$SYM EXPRESS, IMPLIED OR STATUTORY, INCLUDING BUT NOT LIMITED TO ANY WARRANTY  ">> $FILE
+  echo "$SYM THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS OR BE ERROR-FREE AND ANY ">> $FILE
+  echo "$SYM IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,  ">> $FILE
+  echo "$SYM TITLE, OR NON-INFRINGEMENT.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY ">> $FILE
+  echo "$SYM BE LIABLE FOR ANY DAMAGES, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, ">> $FILE
+  echo "$SYM SPECIAL OR CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN   ">> $FILE
+  echo "$SYM ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY, ">> $FILE
+  echo "$SYM CONTRACT, TORT OR OTHERWISE).                                             ">> $FILE
+  echo "$SYM                                     ">> $FILE
+  echo "$SYM DO-NOT-REMOVE end-copyright-block   ">> $FILE
+}
+
+# various comment styles
+CPPSTYLE="//"
+HASHSTYLE="#"
+
+# applies or updates copyright
+apply_header ()
+{
+  FILE=$1
+  SYMBOL=$2
+  sed -e '/begin-copyright-block/,/end-copyright-block/d' -e '/^\/\//d' $FILE > /tmp/$USER-copyright-temp
+  print_header $FILE $SYMBOL
+  cat /tmp/$USER-copyright-temp >> $FILE
+}
+
+# look through all c++-related files
+FILES=`find . -name "*.hpp" -o -name "*.cpp"`
+for file in $FILES; do
+  apply_header $file $CPPSTYLE
+done
+
+FILES=`find . -name "*akefile*"`
+for file in $FILES; do
+  apply_header $file $HASHSTYLE
+done

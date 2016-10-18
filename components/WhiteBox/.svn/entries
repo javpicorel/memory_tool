@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wc-entries
+   xmlns="svn:">
+<entry
+   committed-rev="446"
+   name=""
+   committed-date="2007-11-13T02:06:49.260006Z"
+   url="svn://glenkinchie/flexus/trunk/components/WhiteBox"
+   last-author="evlachos"
+   kind="dir"
+   uuid="bba339f7-f209-0410-a72e-d32cac62bad2"
+   repos="svn://glenkinchie"
+   prop-time="2008-07-27T17:35:55.000000Z"
+   revision="560"/>
+<entry
+   committed-rev="446"
+   name="WhiteBox.hpp"
+   text-time="2008-07-27T17:35:55.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="f3d627eb4816d9cfaee1bd8a95a455df"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:35:55.000000Z"/>
+<entry
+   committed-rev="446"
+   name="WhiteBoxIface.hpp"
+   text-time="2008-07-27T17:35:55.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="e7f0562629564cd1f232b080dbceec3a"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:35:55.000000Z"/>
+<entry
+   committed-rev="446"
+   name="WhiteBoxImpl.cpp"
+   text-time="2008-07-27T17:35:55.000000Z"
+   committed-date="2007-11-13T02:06:49.260006Z"
+   checksum="887bbe55719ef18854a1f80f0faa39ab"
+   last-author="evlachos"
+   kind="file"
+   prop-time="2008-07-27T17:35:55.000000Z"/>
+</wc-entries>

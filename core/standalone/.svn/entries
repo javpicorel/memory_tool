@@ -1,0 +1,70 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/core/standalone
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+configuration_api.cpp
+file
+
+
+
+
+2009-11-02T14:31:25.000000Z
+e541b6a0d6c5e8cb7f775e1cacc185c9
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+startup.cpp
+file
+
+
+
+
+2009-11-02T14:31:25.000000Z
+cc83efcc957941b8f0dab327a1319d71
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+aux_
+dir
+
+api_wrappers.cpp
+file
+
+
+
+
+2009-11-02T14:31:25.000000Z
+72ef226acad60bdef707e5702dad95e9
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+

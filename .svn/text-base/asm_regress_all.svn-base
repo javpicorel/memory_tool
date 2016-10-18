@@ -1,0 +1,37 @@
+#!/bin/bash
+
+
+###########
+# Constants
+###########
+
+USER=`whoami`
+ORIGINAL_WD=`pwd`
+
+AFS_BASE_DIR=/afs/scotch.ece.cmu.edu/project/scaffold/regress
+TEST_CASE_BASE=$AFS_BASE_DIR/job-specs/regress_sol8_1cpu/wd
+
+
+if [[ $# -eq 0 ]] ; then
+  echo "asm_regress_all <dir/-> [options] <simulator>"
+  exit
+fi
+
+if [[ $1 == "-" ]] ; then
+  TEST_PATH_LIST=`ls $TEST_CASE_BASE/*/*.cpp`
+else
+  TEST_PATH_LIST=`ls $TEST_CASE_BASE/$1/*.cpp`
+fi
+
+shift
+
+for TEST_PATH in $TEST_PATH_LIST ; do
+  TEMP=${TEST_PATH#$TEST_CASE_BASE/}
+  TEST_LIST="$TEST_LIST ${TEMP%.cpp}"
+done
+
+for TEST in $TEST_LIST ; do
+  echo "Running $TEST"
+  asm_regress $* $TEST
+done
+

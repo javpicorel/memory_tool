@@ -1,0 +1,279 @@
+#!/bin/bash
+
+
+###########
+# Useful functions
+###########
+log() {
+  echo $1
+  echo $1 >> $LOG
+}
+
+###########
+# Find/define SCAFFOLD_HOME
+###########
+
+if [[ $SCAFFOLD_HOME == "" ]] ; then
+  if [[ -f regress_workarea ]] ; then
+    SCAFFOLD_HOME=`pwd`
+  else
+    echo "Must set SCAFFOLD_HOME environment variable"
+    exit
+  fi
+fi
+
+###########
+# Constants
+###########
+
+USER=`whoami`
+LOCAL_REGRESS_DIR=/home/regress/$USER-build
+CHECKOUT_DIR=`pwd`   #$SCAFFOLD_HOME
+LOCAL_CVS_DIR=$LOCAL_REGRESS_DIR/cvs_copy
+AFS_REGRESS_DIR=/afs/scotch.ece.cmu.edu/project/scaffold/regress
+CKPT_BASE=/afs/scotch.ece.cmu.edu/project/scaffold/ckpts
+JOB_LIST_FILE=$AFS_REGRESS_DIR/job-specs/regress_list
+AFS_RUN_BASE_DIR=$AFS_REGRESS_DIR/runs
+AFS_SCRATCH_BASE_DIR=$AFS_REGRESS_DIR/scratch
+ORIGNAL_WD=`pwd`
+NEW_JOB=$AFS_REGRESS_DIR/batch/new_job
+SPAWN=$AFS_REGRESS_DIR/batch/spawn
+
+RUN_DATE=`date +%d%b%y-%H%M%S`
+
+QUEUE=any
+
+##########
+# Set umask
+##########
+umask 000
+
+###########
+# Print Usage
+###########
+
+if [[ $# -eq 0 ]] ; then
+  echo "Usage: $0 [options] <make-target> [jobs]"
+  echo "  [jobs] defaults to contents of job-specs/regress_list"
+  echo "  Supported options:"
+  echo "    -trace <cycle> = Start IFACE trace at specified cycle"
+  echo "    -queue <queue> = Run jobs on particular queue"
+  echo "    -keep          = Keep job working directory"
+  echo "    -cfg <cfg>     = Use alternate cfg dir under user-specs/<you>/  default is wd"
+  echo "    -ckpt <ckpt>   = Use checkpointed Scaffold state"
+  echo "    -nocheck       = Skip check for job queue files"
+  echo "    -nospawn       = Do not run spawn to launch job"
+  echo "    -nosimics2     = use Simics 1.x"
+  exit
+fi
+
+
+###########
+# Check Params
+###########
+
+TRACE_ENABLED=0
+QUEUE_OPTION=0
+KEEP_JOB_DIR=0
+CHECK_JOB_QUEUES=1
+SIMICS2_OPTION=
+TRACE_OPTION=
+KEEP_JOB_OPTION=
+USER_CFG_OPTION=
+USER_CFG=
+SIMICS_PARAMS="-simics-version -2.2.19"
+SIMICS_MA_PARAMS="-stall"
+CKPT=0
+CKPT_NAME=
+CKPT_OPTION=
+NO_SPAWN=0
+while [[ ${1:0:1} == "-" ]] ; do
+  case $1 in
+    "-trace" )
+      SKIP_CREDS=1
+      TRACE_ENABLED=1
+      TRACE_OPTION="-trace $2"
+      shift
+      shift
+      ;;
+    "-queue" )
+      QUEUE=$2
+      QUEUE_OPTION=1
+      shift
+      shift
+      ;;
+    "-keep" )
+      KEEP_JOB_DIR=1
+      KEEP_JOB_OPTION="-keep"
+      shift
+      ;;
+    "-cfg" )
+      USER_CFG_OPTION="-cfg $2"
+      USER_CFG="-$2"
+      shift
+      shift
+      ;;
+    "-ckpt" )
+      CKPT=1
+      CKPT_NAME=$2
+      CKPT_OPTION="-ckpt $2"
+      shift
+      shift
+      ;;
+    "-nosimics2" )
+      SIMICS2_OPTION="-nosimics2"
+      shift
+      ;;
+    "-nospawn" )
+      NO_SPAWN=1
+      shift
+      ;;
+    "-ma" )
+      SIMICS_MA_PARAMS="-ma"
+      shift
+      ;;
+    "-nocheck" )
+      CHECK_JOB_QUEUES=0
+      shift
+      ;;
+    * )
+      echo "Unknown option $1"
+      shift
+      ;;
+    esac
+done
+
+TARGET=$1
+shift
+
+if [[ $# -ge 1 ]] ; then
+  SPECIFIC_BMARKS=1
+  BMARK_LIST=$@
+
+  if [[ $CHECK_JOB_QUEUES -eq 1 ]] ; then
+    QUEUE_DIR=$AFS_REGRESS_DIR/batch/data
+    for BMARK in $BMARK_LIST ; do
+      QUEUE_FILE=$QUEUE_DIR/$BMARK\_image.queue
+      if [[ ! -f $QUEUE_FILE ]] ; then
+        echo "Aborting - no queue file for $BMARK (use \"-nocheck\" to override)."
+        #echo $QUEUE_FILE
+        exit
+      fi
+    done
+  fi
+fi
+
+SIMULATOR=${TARGET%%-*}
+DBG=${TARGET#$SIMULATOR-}
+if [[ $TRACE_ENABLED -eq 1 ]] ; then
+  RUN=$USER-${SIMULATOR}${USER_CFG}-trace-workarea-$RUN_DATE
+elif [[ $KEEP_JOB_DIR -eq 1 ]] ; then
+  RUN=$USER-${SIMULATOR}${USER_CFG}-keep-workarea-$RUN_DATE
+else
+  RUN=$USER-${SIMULATOR}${USER_CFG}-workarea-$RUN_DATE
+fi
+
+RUN_DIR=$AFS_RUN_BASE_DIR/$RUN
+SCRATCH_DIR=$AFS_SCRATCH_BASE_DIR/$RUN
+LOG=$RUN_DIR/log
+
+if [[ $TARGET == "" ]] ; then
+  echo "Must specify a make target for the regression test"
+  exit
+fi
+
+if [[ -d $RUN_DIR ]] ; then
+  echo "Run $RUN already exists"
+  exit
+fi
+
+###########
+# Check Build
+###########
+
+LIB_COUNT=`ls -1 $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG* | wc -l`
+if [[ $LIB_COUNT -gt 1 ]] ; then
+  echo "More than one simulator binary is built.  Don't know which one to use."
+  exit
+fi
+
+LIBRARY=`ls $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG*`
+if [[ $? -ne 0 ]] ; then
+  log "No $SIMULATOR binary found"
+  exit
+fi
+
+echo $LIBRARY
+
+##########
+# Verify that checkpoint exists
+##########
+if [[ $CKPT -eq 1 && $CHECK_JOB_QUEUES -eq 1 ]] ; then
+  if [[ -x $CKPT_BASE/$CKPT_NAME ]] ; then
+    # OK - checkpoint setup script exists
+    echo ""
+  else 
+    log "No checkpoint setup script for $CKPT_NAME was found"
+    exit
+  fi
+fi
+
+##########
+# Create Run
+##########
+mkdir -p $RUN_DIR
+fs sa $RUN_DIR $USER rlidwka
+log "Regression run $RUN for target $TARGET"
+
+##########
+# Place built binary and other files in SCRATCH area
+##########
+mkdir -p $SCRATCH_DIR
+fs sa $SCRATCH_DIR system:anyuser rlidwka
+mkdir $SCRATCH_DIR/bin
+cp $LIBRARY $SCRATCH_DIR/bin
+mkdir $SCRATCH_DIR/wd
+cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.rom $SCRATCH_DIR/wd >& /dev/null
+cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.topology $SCRATCH_DIR/wd >& /dev/null
+
+##########
+# Write launch.simics script
+##########
+TEMP1=${LIBRARY##*lib}
+TEMP2=${TEMP1%.so}
+MODULE=${TEMP2//_/-}
+echo "load-module $MODULE" > $SCRATCH_DIR/wd/load.simics
+
+##########
+# Schedule jobs
+##########
+if [[ $SPECIFIC_BMARKS -eq 1 ]] ; then
+  JOB_LIST=$BMARK_LIST
+else
+  JOB_LIST=$(< $JOB_LIST_FILE)
+fi
+
+echo 0 > $SCRATCH_DIR/job_count
+for JOB in $JOB_LIST ; do
+
+  if [[ $QUEUE_OPTION -ne 1 ]] ; then
+    # use the default queue for this benchmark
+    QUEUE=${JOB}_image
+  fi
+
+  $NEW_JOB $QUEUE $AFS_REGRESS_DIR/run_simics_job $TRACE_OPTION $SIMICS_PARAMS $SIMICS_MA_PARAMS $KEEP_JOB_OPTION $USER_CFG_OPTION $SIMICS2_OPTION $CKPT_OPTION -no-autotrace $RUN $JOB
+  JOB_COUNT=$(< $SCRATCH_DIR/job_count)
+  JOB_COUNT=$(( $JOB_COUNT + 1))
+  echo $JOB_COUNT > $SCRATCH_DIR/job_count
+
+done
+
+if [[ $NO_SPAWN -eq 0 ]] ; then
+  $SPAWN
+fi
+
+
+##########
+# Clean Exit
+##########
+cd $ORIGINAL_WD

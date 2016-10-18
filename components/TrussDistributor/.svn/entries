@@ -1,0 +1,52 @@
+8
+
+dir
+665
+svn://coleburn.ece.cmu.edu/flexus/trunk/components/TrussDistributor
+svn://coleburn.ece.cmu.edu
+
+
+
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+has-props
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+bba339f7-f209-0410-a72e-d32cac62bad2
+
+TrussDistributor.hpp
+file
+
+
+
+
+2009-11-02T14:31:17.000000Z
+66e43b6e9dc093b8edfc3e711b10fd2b
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+
+TrussDistributorImpl.hpp
+file
+
+
+
+
+2009-11-02T14:31:17.000000Z
+5443f1d639e6310ce8334af905beb353
+2007-11-13T02:06:49.260006Z
+446
+evlachos
+

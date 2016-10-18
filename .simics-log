@@ -1,0 +1,104 @@
+# '.simics-log':
+# Simics Simics 3.0.31 (1406 Tue Feb 19 19:05:46 2008)
+#
+# Note: Simics logs all commands, even incorrect ones and comments.
+# This file can be used as a script using the -x flag, in which
+# case there will be multiple headers. You can override the creation
+# of this file with the -no-log flag.
+#
+# Running on parsasrv1.epfl.ch (Linux 2.6.18-164.11.1.el5 x86_64)
+# command-line arguments: -fast /home/parsacom/workloads/ckpts/shoremt_tpcc_20_mix_16cpu_10/baseline/phase_000/simics/phase_000 
+#
+# Add commands that should run when Simics starts to this file.
+#
+@import sim_commands; sim_commands.run_command_or_checkpt(SIM_native_path("/home/parsacom/workloads/ckpts/shoremt_tpcc_20_mix_16cpu_10/baseline/phase_000/simics/phase_000"))
+run 20000000
+run 20000000
+run 20000000
+run 6000000
+run 2000000
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 15
+run 1
+run 1
+run 1
+run 15
+run 1
+run 1
+run 1
+run 1
+run 9
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 1
+run 10
+run 10
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+run 100
+exit

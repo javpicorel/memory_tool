@@ -1,0 +1,248 @@
+#!/bin/bash
+
+
+###########
+# Useful functions
+###########
+log() {
+  echo $1
+  echo $1 >> $LOG
+}
+
+###########
+# Find/define FLEXUS_HOME
+###########
+
+if [[ $FLEXUS_HOME == "" ]] ; then
+  if [[ -f run_workload ]] ; then
+    FLEXUS_HOME=`pwd`
+  else
+    echo "Must set FLEXUS_HOME environment variable"
+    exit
+  fi
+fi
+
+###########
+# Constants
+###########
+
+USER=`whoami`
+CHECKOUT_DIR=`pwd`
+AFS_REGRESS_DIR=/afs/scotch.ece.cmu.edu/project/scaffold/regress
+AFS_RUN_BASE_DIR=$AFS_REGRESS_DIR/runs
+AFS_SCRATCH_BASE_DIR=$AFS_REGRESS_DIR/scratch
+ORIGNAL_WD=`pwd`
+NEW_JOB=$AFS_REGRESS_DIR/batch/new_job
+SPAWN=$AFS_REGRESS_DIR/batch/spawn
+
+RUN_DATE=`date +%d%b%y-%H%M%S`
+
+QUEUE=any
+
+##########
+# Set umask
+##########
+umask 000
+
+###########
+# Print Usage
+###########
+
+if [[ $# -eq 0 ]] ; then
+  echo "Usage: $0 [options] <make-target> <workload> <run-generator>"
+  echo "  Supported options:"
+  echo "    -queue <queue> = Run jobs on particular queue"
+  echo "    -keep          = Keep job working directory"
+  echo "    -ckpt-gen      = Make checkpoints.  In this case, <run-generator> should be a <ckpt-generator>"
+  echo "    -cfg <cfg>     = Use alternate cfg dir under user-specs/<you>/  default is wd"
+  echo "    -nospawn       = Do not run spawn to launch job"
+  echo "    -noflexus    = Do not use a simulator"
+  echo "    -ma            = Run OoO job"
+  exit
+fi
+
+
+###########
+# Check Params
+###########
+
+QUEUE_OPTION=0
+USER_CFG=None
+NO_FLEXUS=0
+NO_SPAWN=0
+KEEP=0
+CKPT_GEN=0
+EXTRA_SCHED_OPTIONS=
+while [[ ${1:0:1} == "-" ]] ; do
+  case $1 in
+    "-queue" )
+      QUEUE=$2
+      QUEUE_OPTION=1
+      shift
+      shift
+      ;;
+    "-ckpt-gen" )
+      EXTRA_SCHED_OPTIONS="$EXTRA_SCHED_OPTIONS -keep"
+      KEEP=1
+      CKPT_GEN=1
+      shift
+      ;;
+    "-keep" )
+      EXTRA_SCHED_OPTIONS="$EXTRA_SCHED_OPTIONS -keep"
+      KEEP=1
+      shift
+      ;;
+    "-cfg" )
+      USER_CFG="$2"
+      shift
+      shift
+      ;;
+    "-nospawn" )
+      NO_SPAWN=1
+      shift
+      ;;
+    "-noflexus" )
+      NO_FLEXUS=1
+      EXTRA_SCHED_OPTIONS="$EXTRA_SCHED_OPTIONS -fast"
+      shift
+      ;;
+    "-ma" )
+      EXTRA_SCHED_OPTIONS="$EXTRA_SCHED_OPTIONS -ma"
+      shift
+      ;;
+    * )
+      echo "Unknown option $1"
+      shift
+      ;;
+    esac
+done
+
+if [[ NO_FLEXUS -eq 0 ]] ; then
+  TARGET=$1
+  shift
+fi
+
+if [[ $# -lt 2 ]] ; then
+  echo "Incorrect number of arguments.  Run $0 with no args for usage info."
+  exit
+fi
+
+WORKLOAD=$1
+RUN_GEN=$2
+
+
+if [[ NO_FLEXUS -eq 0 ]] ; then
+  SIMULATOR=${TARGET%%-*}
+  DBG=${TARGET#$SIMULATOR-}
+else
+  SIMULATOR=None
+fi
+
+if [[ CKPT_GEN -eq 1 ]] ; then
+  RUN=$USER-${SIMULATOR}-${USER_CFG}-ckptgen-workarea-$RUN_DATE
+elif [[ KEEP -eq 1 ]] ; then
+  RUN=$USER-${SIMULATOR}-${USER_CFG}-keep-workarea-$RUN_DATE
+else
+  RUN=$USER-${SIMULATOR}-${USER_CFG}-workarea-$RUN_DATE
+fi
+
+RUN_DIR=$AFS_RUN_BASE_DIR/$RUN
+SCRATCH_DIR=$AFS_SCRATCH_BASE_DIR/$RUN
+LOG=$RUN_DIR/log
+
+if [[ NO_FLEXUS -eq 0 && $TARGET == "" ]] ; then
+  echo "Must specify a make target for the regression test"
+  exit
+fi
+
+if [[ -d $RUN_DIR ]] ; then
+  echo "Run $RUN already exists"
+  exit
+fi
+
+###########
+# Check Build
+###########
+if [[ NO_FLEXUS -eq 0 ]] ; then
+  LIB_COUNT=`ls -1 $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG* | wc -l`
+  if [[ $LIB_COUNT -gt 1 ]] ; then
+    echo "More than one simulator binary is built.  Don't know which one to use."
+    exit
+  fi
+
+  LIBRARY=`ls $CHECKOUT_DIR/simulators/$SIMULATOR/libflexus*$DBG*`
+  if [[ $? -ne 0 ]] ; then
+    log "No $SIMULATOR binary found"
+    exit
+  fi
+fi
+
+##########
+# Verify that workload and checkpoint set exist and are consistent
+##########
+$AFS_REGRESS_DIR/inspect_workload.py $WORKLOAD $RUN_GEN
+if [[ $? -ne 0 ]] ; then
+  log "Workload consistency check failed."
+  exit
+fi
+
+##########
+# Create Run
+##########
+mkdir -p $RUN_DIR
+fs sa $RUN_DIR $USER rlidwka
+log "Regression run $RUN for target $TARGET"
+
+##########
+# Place built binary and other files in SCRATCH area
+##########
+mkdir -p $SCRATCH_DIR
+fs sa $SCRATCH_DIR system:anyuser rlidwka
+mkdir $SCRATCH_DIR/bin
+touch $SCRATCH_DIR/bin/empty
+mkdir $SCRATCH_DIR/wd
+touch $SCRATCH_DIR/wd/empty
+if [[ NO_FLEXUS -eq 0 ]] ; then
+  cp $LIBRARY $SCRATCH_DIR/bin
+  cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.rom $SCRATCH_DIR/wd >& /dev/null
+  cp $CHECKOUT_DIR/simulators/$SIMULATOR/*.topology $SCRATCH_DIR/wd >& /dev/null
+fi
+
+##########
+# Write launch.simics script
+##########
+if [[ NO_FLEXUS -eq 0 ]] ; then
+  TEMP1=${LIBRARY##*lib}
+  TEMP2=${TEMP1%.so}
+  MODULE=${TEMP2//_/-}
+  echo "load-module $MODULE" > $SCRATCH_DIR/wd/load.simics
+else
+  echo "" > $SCRATCH_DIR/wd/load.simics
+fi
+
+##########
+# Schedule jobs
+##########
+
+if [[ $QUEUE_OPTION -ne 1 ]] ; then
+  # use the default queue for this benchmark
+  QUEUE=${WORKLOAD}_workload
+fi
+
+if [[ CKPT_GEN -eq 1 ]] ; then
+  $AFS_REGRESS_DIR/generate_flexpoints.py $QUEUE $WORKLOAD $RUN_GEN $RUN $SIMULATOR $USER_CFG
+else
+  $AFS_REGRESS_DIR/schedule_jobs.py $EXTRA_SCHED_OPTIONS $QUEUE $WORKLOAD $RUN_GEN $RUN $SIMULATOR $USER_CFG
+fi
+
+##########
+# Spawn jobs
+##########
+if [[ $NO_SPAWN -eq 0 ]] ; then
+  $SPAWN
+fi
+
+##########
+# Clean Exit
+##########
+cd $ORIGINAL_WD
