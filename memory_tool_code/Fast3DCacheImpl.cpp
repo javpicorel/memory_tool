@@ -68,15 +68,20 @@ class Fast3DCache{
   std::string result_path;
   unsigned int numberVault;
   unsigned int numberWpEntries;
+  unsigned short numberTraces;
 public:
   PageCache  *theCache; //Memory structure
   CacheStats *theStats; //Memory stats structure
  
   // Initialization
-  void initialize(unsigned wkld, unsigned  reg_size,  unsigned  cache_size, unsigned assoc, std::string const & rpath, unsigned int vault, unsigned int wp){
+  void initialize(unsigned wkld, unsigned  reg_size,  unsigned  cache_size, unsigned assoc, std::string const & rpath, unsigned int vault, unsigned int wp, unsigned short numTraces){
           workload =wkld;  
           file.clear();
           file=workloads[workload];
+          file.append("_");
+          string s1= boost::lexical_cast<string>(numTraces);
+          file.append(s1);
+          file.append("x");
           result_path.clear();
           result_path=rpath;
           region=0;
@@ -85,12 +90,13 @@ public:
           associativity=assoc;
           numberVault = vault;
           numberWpEntries = wp;
+          numberTraces = numTraces;
           theStats = new CacheStats(file,"region_0", cacheSize, region_size,  assoc, rpath);         
           theCache = new PageCache(region_size,  cacheSize, assoc, theStats,  workload, numberVault, numberWpEntries);
   }
 
-  Fast3DCache (unsigned wkld, unsigned regSize, unsigned onChipMemorySize, unsigned associativity, std::string const & rpath, unsigned int vault, unsigned int wp){
-     initialize(wkld, regSize,  onChipMemorySize, associativity, rpath, vault, wp); 
+  Fast3DCache (unsigned wkld, unsigned regSize, unsigned onChipMemorySize, unsigned associativity, std::string const & rpath, unsigned int vault, unsigned int wp, unsigned short numTraces){
+     initialize(wkld, regSize,  onChipMemorySize, associativity, rpath, vault, wp, numTraces); 
   }
 
   void printStatistics()
@@ -126,7 +132,7 @@ public:
   }
 
   // Ports
-  void fromL2(compressedRecord &message, short &idx) {
+  void fromL2(compressedRecord &message, short &idx, unsigned short &pid) {
     unsigned int way = 0;
     unsigned int op = kRead;
     bool page_in_cache = false;
@@ -135,7 +141,7 @@ public:
       return;
     }
 
-    state_t state= theCache->lookup(message.address, way);  
+    state_t state= theCache->lookup(message.address, way, pid);  
 
     if(state == kValid){
       page_in_cache = true; //page hit       
@@ -164,7 +170,7 @@ public:
 		    theStats->theWriteHits_stat++;
 	    }
 
-      theCache->touchAnAddress(message.address, way, op); 
+      theCache->touchAnAddress(message.address, way, op, pid); 
       theCache->applyPolicy(message.address, way);	
     }else{ //Miss
        if(message.operation == 'R'){
@@ -172,12 +178,12 @@ public:
          theStats->theReadMisses_stat++;
 
          way = replace(message);
-         theCache->insert(message.address, kValid, way, READ);
+         theCache->insert(message.address, kValid, way, READ, pid);
        }else if(message.operation=='W'){  
          theStats->theWriteRequests_stat++;
          theStats->theWriteMisses_stat++;
          way = replace(message);
-         theCache->insert(message.address, kValid, way, WRITE);
+         theCache->insert(message.address, kValid, way, WRITE, pid);
        } 
     }
 
@@ -198,7 +204,7 @@ void printUsage(string s){
  unsigned int numWorkloads = sizeof(workloads)/sizeof(workloads[0]);
 
  cout<<s<<endl;
- cout<<"Usage: Fast3DCacheImpl m w (p) (a) (i) (o) (v) (wp) (s)"<< std::endl;
+ cout<<"Usage: Fast3DCacheImpl m w (p) (a) (i) (o) (v) (wp) (s) (np)"<< std::endl;
  cout<<"    m - memory size in MB"<< std::endl;
  cout<<"    w - workload (0-" << numWorkloads - 1 << ")" << std::endl;
 
@@ -214,9 +220,10 @@ void printUsage(string s){
  cout<<"    v - number of vaults (default 64)" << std::endl;
  cout<<"    wp - number of wp entries (default 1024)" << std::endl;
  cout<<"    s - size of the workload trace (default 8)" << std::endl;
+ cout<<"    np - number of workload traces (default 1)" << std::endl;
 }
 
-bool parseArgs(int argc, char ** argv, unsigned &cacheSize, unsigned &workload, unsigned &regionSize, unsigned &assoc, short &idx, long long int &operations, char **tpath, char **rpath, unsigned int &vault, unsigned int &wp, unsigned short &traceSize){
+bool parseArgs(int argc, char ** argv, unsigned &cacheSize, unsigned &workload, unsigned &regionSize, unsigned &assoc, short &idx, long long int &operations, char *tpath, char *rpath, unsigned int &vault, unsigned int &wp, unsigned short &traceSize, unsigned short &numTraces){
 
   if(argc < 3){ 
     printUsage("Not enough args"); 
@@ -255,19 +262,15 @@ bool parseArgs(int argc, char ** argv, unsigned &cacheSize, unsigned &workload, 
   else operations = -1;
 
   if (argc >= 8){
-    *tpath = (char *) malloc(strlen(argv[7] + 1));
-    strcpy(*tpath, argv[7]);
+    strcpy(tpath, argv[7]);
   }else{
-    *tpath = (char *) malloc(strlen("/tmp/") + 1);
-    strcpy(*tpath, "/tmp/");
+    strcpy(tpath, "/tmp/");
   }
 
   if (argc >= 9){
-    *rpath = (char *) malloc(strlen(argv[8] + 1));
-    strcpy(*rpath, argv[8]);
+    strcpy(rpath, argv[8]);
   }else{
-    *rpath = (char *) malloc(strlen("/tmp/") + 1);
-    strcpy(*rpath, "/tmp/");
+    strcpy(rpath, "/tmp/");
   }
 
   if (argc >= 10) 
@@ -282,6 +285,10 @@ bool parseArgs(int argc, char ** argv, unsigned &cacheSize, unsigned &workload, 
     traceSize= (unsigned short) atoi(argv[11]);
   else traceSize = 8;
 
+  if (argc >= 13) 
+    numTraces= (unsigned short) atoi(argv[12]);
+  else numTraces = 1;
+
   return true;
 }
 
@@ -289,12 +296,13 @@ int main(int argc, char ** argv){
   unsigned int workload, cacheSize, regionSize, associativity;
   short idx;
   long long int max_ops;
-  char *trace_path;
-  char *result_path;
+  char trace_path[80];
+  char result_path[80];
   unsigned int vault, wp;
   unsigned short traceSize;
+  unsigned short numTraces;
 
-  if(!parseArgs(argc, argv, cacheSize, workload, regionSize, associativity, idx, max_ops, &trace_path, &result_path, vault, wp, traceSize)){
+  if(!parseArgs(argc, argv, cacheSize, workload, regionSize, associativity, idx, max_ops, trace_path, result_path, vault, wp, traceSize, numTraces)){
     return false;
   }
 
@@ -305,9 +313,10 @@ int main(int argc, char ** argv){
   std::cout<<"Result Path: " << result_path << std::endl;
   std::cout<<"Workload: " << workloads[workload] << std::endl;
   std::cout<<"Trace Size: " << traceSize << std::endl;
+  std::cout<<"Number of traces: " << numTraces << std::endl;
   std::cout<<"=======================================================" << std::endl;
 
-  Fast3DCache* component = new Fast3DCache(workload,  regionSize,    cacheSize,   associativity, result_path, vault, wp);
+  Fast3DCache* component = new Fast3DCache(workload,  regionSize,    cacheSize,   associativity, result_path, vault, wp, numTraces);
   std::string str(trace_path);
   str.append(workloadPaths[workload]);
 
@@ -365,8 +374,10 @@ int main(int argc, char ** argv){
      ops++;
      
      //printf("Number of ops %llu...\n", (unsigned long long) ops);
- 
-     component->fromL2(message, idx);
+
+     for (unsigned short pid = 0; pid < numTraces; pid++){ //Number of processes we are simulating
+       component->fromL2(message, idx, pid);
+     }
   }
 
   printf("Ops count: %llu\n", (unsigned long long int) ops);
