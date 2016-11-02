@@ -117,7 +117,7 @@ char* workloadPaths[] = {"pinatrace-memcached",
 struct DataItem {
    int data;   
    long long int key;
-   short pid;
+   unsigned short pid;
 };
 
 uint64_t size; //Size of the page table
@@ -141,7 +141,18 @@ unsigned long long int removesFailed = 0;
 unsigned long long int hashCode(unsigned long long int key) {
    return key % size;
 }
-
+/*
+unsigned long long int hashCode(unsigned long long int key) {
+  key = (~key) + (key << 21); // key = (key << 21) - key - 1;
+  key = key ^ (key >> 24);
+  key = (key + (key << 3)) + (key << 8); // key * 265
+  key = key ^ (key >> 14);
+  key = (key + (key << 2)) + (key << 4); // key * 21
+  key = key ^ (key >> 28);
+  key = key + (key << 31);
+  return key % size;
+}
+*/
 unsigned long long int computeVPN(unsigned long long int key) {
   return key/region_size;
 }
@@ -409,6 +420,7 @@ int main(int argc, char ** argv){
   unsigned short traceSize;
   unsigned short numTraces;
   unsigned short factor;
+  unsigned short pids[64];
 
   if(!parseArgs(argc, argv, vaultSize, workload, regionSize, idx, max_ops, trace_path, result_path, vault, vaultID, traceSize, numTraces, factor)){
     return false;
@@ -462,10 +474,6 @@ int main(int argc, char ** argv){
   dummyItem->data = -1;
   dummyItem->key = -1;
 
-  //struct DataItem* tmpItem = (struct DataItem*) malloc(sizeof(struct DataItem));
-  //tmpItem->data = -1;
-  //tmpItem->key = -1;
-
   str.append(".out");
   char* cstr = new char [ str.size() + 1];
   strcpy (cstr, str.c_str());
@@ -480,6 +488,10 @@ int main(int argc, char ** argv){
     printf("Error: Cannot open trace file for %s.\n", cstr);
     gzclose(input);
     return false;
+  }
+
+  for (int i=0; i < numTraces; i++){
+    pids[i] = rand() % 65536; // 16-bit ASID
   }
 
   while(!gzeof(input)){ //Memory Accesses
@@ -508,17 +520,19 @@ int main(int argc, char ** argv){
      }
 
      for (unsigned short pid = 0; pid < numTraces; pid++){ //Number of processes we are simulating
-     //  component->fromL2(message, idx, pid);
-       item = search(computeVPN(message.address), pid);
+       item = search(computeVPN(message.address) ^ pids[pid], pid);
+       //item = search(computeVPN(message.address), pid);
+       //item = search(computeVPN(message.address | ((unsigned long long int) pid << 48)), pid);
 
        //printf("Address: %llx, VPN: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), (unsigned long long int) hashCode(message.address));
+       //printf("Address: %llx, VPN: %llx, pid: %d, VPN+PID: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pid, (unsigned long long int) computeVPN(message.address | ((unsigned long long int) pid << 48)), (unsigned long long int) hashCode(computeVPN(message.address | ((unsigned long long int) pid << 48))));
+       //printf("Address: %llx, VPN: %llx, pid: %d, VPN XOR ASID: %llx, Hash: %llu, HashXOR: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address)), (unsigned long long int) hashCode(computeVPN(message.address) ^ pids[pid]));
 
        if (item == NULL){
 
          if ((((float) (inserts - deletes))/size) >= (((float) 1)/factor)){
-           struct DataItem *tmp_item = get_first_key(computeVPN(message.address));
-           //long long int tmp_key = get_first_key(computeVPN(message.address));
-           //tmpItem->key = tmp_key;
+           //struct DataItem *tmp_item = get_first_key(computeVPN(message.address | ((unsigned long long int) pid << 48)));
+           struct DataItem *tmp_item = get_first_key(computeVPN(message.address) ^ pids[pid]);
 
            if (tmp_item != NULL){
              erase(tmp_item);
@@ -527,14 +541,14 @@ int main(int argc, char ** argv){
            }
          }
 
-         insert(computeVPN(message.address), 0, pid);
+         //insert(computeVPN(message.address | ((unsigned long long int) pid << 48)), 0, pid);
+         insert(computeVPN(message.address) ^ pids[pid], 0, pid);
        }
      }
   }
 
   printf("Ops count: %llu\n", (unsigned long long int) ops);
  
-  //component->saveStats(); 
   displayStats();
   gzclose(input);
   return true;
