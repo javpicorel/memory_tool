@@ -31,7 +31,7 @@ vault_id=0
 echo -e "Workload Path: $workload_path"
 echo -e "Result Path: $result_path"
 
-for i in 0 1 2 3 4 # All except Cassandra and Neo4j
+for i in $1 # All except Cassandra and Neo4j
 #for i in 0 # All except Cassandra and Neo4j
 do
   echo -e "====================================="

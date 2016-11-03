@@ -22,7 +22,8 @@ memory_sizes=( 512 512 512 32 16 512 512 )
 memory_tool_sizes=( 8 8 8 32 16 8 12 )
 number_processes=( 1 2 4 8 16 32 64 )
 factors=( 2 4 8 )
-operations=10000000000
+#operations=10000000000
+operations=-1
 page_size=4096
 num_vaults=(16 16 16 64 32 16 32)
 cores=-1 # -1 all cores
@@ -31,14 +32,14 @@ vault_id=0
 echo -e "Workload Path: $workload_path"
 echo -e "Result Path: $result_path"
 
-for i in 0 1 2 3 4 # All except Cassandra and Neo4j
+for i in $1 # All except Cassandra and Neo4j
 #for i in 0 # All except Cassandra and Neo4j
 do
   echo -e "====================================="
   echo -e "Workload: ${workload_name[$i]}"
   echo -e "====================================="
 
-  for j in "${number_processes[@]}"
+  for j in "${number_processes[$2]}"
   do
     echo -e "========================"
     echo -e "Number of processes: $j"
