@@ -138,7 +138,13 @@ unsigned long long int hits = 0;
 unsigned long long int misses = 0;
 unsigned long long int removesFailed = 0;
 
-unsigned long long int hashCode(unsigned long long int key) {
+unsigned long long int computeVPN(unsigned long long int key) {
+  //return key/region_size;
+  return key >> 12;
+  //return key;
+}
+
+unsigned long long int hashCode(unsigned long long int key, unsigned short pid) {
 /*
    unsigned long long int key_aux = key;
    unsigned long long int c;
@@ -159,9 +165,15 @@ unsigned long long int hashCode(unsigned long long int key) {
   // unsigned long long int aux = EXTRACT_BITS(key, 19, 29);
    
  //  return (key ^ aux) % size;
+
+  //unsigned long long int key_tmp = computeVPN(key);
+
+  //key_tmp = key_tmp ^ pid; 
    
-   
-  return key % size;
+  //return key % size;
+  unsigned long long int tmp = key ^ pid;
+
+  return tmp % size;
 
 }
 /*
@@ -176,13 +188,13 @@ unsigned long long int hashCode(unsigned long long int key) {
   return key % size;
 }
 */
-unsigned long long int computeVPN(unsigned long long int key) {
-  return key/region_size;
-  //return key;
-}
 
-unsigned long long int computeVault(unsigned long long int key) {
-   return key % numVaults;
+unsigned long long int computeVault(unsigned long long int key, unsigned short pid) {
+   //unsigned long long int key_tmp = hashCode(key, pid);
+
+   //return key_tmp % numVaults;
+   unsigned long long int tmp = key ^ pid;
+   return tmp % numVaults;
 }
 
 //struct DataItem *search(unsigned long long int key) {
@@ -192,11 +204,15 @@ struct DataItem *search(unsigned long long int key, unsigned short pid) {
    unsigned long long counter=0;
 
    //get the hash 
-   unsigned long long int hashIndex = hashCode(key);  
+   unsigned long long int hashIndex = hashCode(key, pid);  
 
    ++searches;
 
+   //if (hashArray[hashIndex] != NULL)
+   // printf("Search, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d, hashIndex: %llu\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid, hashIndex);
+
    if((hashArray[hashIndex] != NULL) && (((hashArray[hashIndex]->key != (long long int) key)) || (hashArray[hashIndex]->pid != pid))){
+     //printf("CONFLICT => Search conflict, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid);
      //++conflicts;
      ++conflicts_tmp;
      //printf("Conflict in %llu\n", hashIndex);
@@ -207,6 +223,7 @@ struct DataItem *search(unsigned long long int key, unsigned short pid) {
       //printf("Index: %llu\n", hashIndex);
 	
       if((hashArray[hashIndex]->key == (long long int) key) && (hashArray[hashIndex]->pid == pid)){
+         //printf("HIT => Search conflict, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid);
          ++hits;
          conflicts += conflicts_tmp;
          retries += retries_tmp;
@@ -233,8 +250,8 @@ struct DataItem *search(unsigned long long int key, unsigned short pid) {
    return NULL;        
 }
 
-struct DataItem *get_first_key(long long int key){
-   unsigned long long int hashIndex = hashCode(key);  
+struct DataItem *get_first_key(long long int key, unsigned short pid){
+   unsigned long long int hashIndex = hashCode(key, pid);  
    unsigned long long int counter = 0;
 
    //move in array until an empty or deleted cell
@@ -257,8 +274,8 @@ struct DataItem *get_first_key(long long int key){
    return NULL;
 }
 
-struct DataItem *get_last_key(long long int key){
-   unsigned long long int hashIndex = hashCode(key);  
+struct DataItem *get_last_key(long long int key, unsigned short pid){
+   unsigned long long int hashIndex = hashCode(key, pid);  
    unsigned long long int counter = 0;
 
    //if ((hashArray[hashIndex] != NULL) && (hashArray[hashIndex]->key != -1)){
@@ -297,7 +314,7 @@ struct DataItem *get_last_key(long long int key){
 
 bool replace(long long int key, int data, unsigned short pid) {
 
-//   printf("Enter!\n");
+   //printf("Enter!\n");
 
    //struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
    struct DataItem *item;
@@ -306,12 +323,21 @@ bool replace(long long int key, int data, unsigned short pid) {
    //item->pid = pid;
 
    //get the hash 
-   unsigned long long int hashIndex = hashCode(key);
+   unsigned long long int hashIndex = hashCode(key, pid);
+   unsigned long long int prevIndex = hashIndex;
+   unsigned long long int lenght = 0;
+   unsigned long long int counter = 0;
 
    //++inserts;
 
    //move in array until an empty or deleted cell
-   while(hashArray[hashIndex] == NULL) {
+   //while(hashArray[hashIndex] == NULL) {
+   if (hashArray[hashIndex] == NULL)
+     return false;
+
+   while(hashArray[hashIndex] != NULL) {
+      ++lenght;
+
       //go to next cell
       ++hashIndex;
 		
@@ -319,8 +345,28 @@ bool replace(long long int key, int data, unsigned short pid) {
       hashIndex %= size;
    }
 
-   if (hashArray[hashIndex]->key != -1){
-     item= hashArray[hashIndex];
+   hashIndex = hashCode(key, pid);
+
+   while(hashArray[hashIndex] != NULL) {
+      prevIndex = hashIndex;
+
+      if (counter == (rand() % lenght)){
+        break; 
+      }
+
+      ++counter;
+
+      //go to next cell
+      ++hashIndex;
+		
+      //wrap around the table
+      hashIndex %= size;
+   }
+
+   //if (hashArray[hashIndex]->key != -1){
+   //  item= hashArray[hashIndex];
+   if (hashArray[prevIndex]->key != -1){
+     item= hashArray[prevIndex];
      item->data = data;  
      item->key = key;
      item->pid = pid;
@@ -353,7 +399,7 @@ void insert(long long int key, int data, unsigned short pid) {
    item->pid = pid;
 
    //get the hash 
-   unsigned long long int hashIndex = hashCode(key);
+   unsigned long long int hashIndex = hashCode(key, pid);
 
    ++inserts;
 
@@ -374,7 +420,7 @@ struct DataItem* erase(struct DataItem* item) {
    unsigned short pid = item->pid;
 
    //get the hash 
-   unsigned long long int hashIndex = hashCode(key);
+   unsigned long long int hashIndex = hashCode(key, pid);
 
    //++deletes;
 
@@ -642,6 +688,8 @@ int main(int argc, char ** argv){
 
   for (int i=0; i < numTraces; i++){
     pids[i] = rand() % 65536; // 16-bit ASID
+
+    printf("PID[%d]=%d\n", i, pids[i]);
     //pids[i] = 0;
   }
 
@@ -675,23 +723,29 @@ int main(int argc, char ** argv){
      //}
 
      for (unsigned short pid = 0; pid < numTraces; pid++){ //Number of processes we are simulating
-       if (computeVault(computeVPN(message.address) ^ pids[pid]) != vaultID){ //Skip if the address does not belong to the vault
+       //if (computeVault(computeVPN(message.address) ^ pids[pid]) != vaultID){ //Skip if the address does not belong to the vault
+       if (computeVault(computeVPN(message.address),pids[pid]) != vaultID){ //Skip if the address does not belong to the vault
          continue;
        }
        
-       item = search(computeVPN(message.address) ^ pids[pid], pids[pid]);
+       //item = search(computeVPN(message.address) ^ pids[pid], pids[pid]);
+       item = search(computeVPN(message.address), pids[pid]);
+
        //item = search(computeVPN(message.address), pid);
        //item = search(computeVPN(message.address | ((unsigned long long int) pid << 48)), pid);
 
        //printf("Address: %llx, VPN: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), (unsigned long long int) hashCode(message.address));
        //printf("Address: %llx, VPN: %llx, pid: %d, VPN+PID: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pid, (unsigned long long int) computeVPN(message.address | ((unsigned long long int) pid << 48)), (unsigned long long int) hashCode(computeVPN(message.address | ((unsigned long long int) pid << 48))));
        //printf("Address: %llx, VPN: %llx, pid: %d, VPN XOR ASID: %llx, Hash: %llu, HashXOR: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address)), (unsigned long long int) hashCode(computeVPN(message.address) ^ pids[pid]));
-       //printf("Address: %llx, VPN: %llu, pid: %d, VPN XOR ASID: %llx, Hash: %llu, HashXOR: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address)), (unsigned long long int) hashCode(computeVPN(message.address) ^ pids[pid]));
+       
+       
+       //printf("Address: %llx, VPN: %llx, pid: %d, VPN XOR ASID: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address), pids[pid]));
 
        if (item == NULL){
 
          if ((((float) (inserts - deletes))/size) >= (((float) 1)/factor)){
-           bool replaced = replace(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
+           //bool replaced = replace(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
+           bool replaced = replace(computeVPN(message.address), 0, pids[pid]);
 
            if (!replaced){
              ++removesFailed;
@@ -727,7 +781,8 @@ int main(int argc, char ** argv){
            //insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
          }else{
 
-           insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
+           //insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
+           insert(computeVPN(message.address), 0, pids[pid]);
          }
        }
      }
