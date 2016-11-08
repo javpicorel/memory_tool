@@ -282,7 +282,7 @@ void printUsage(std::string s){
  std::cout<<"    h - ASID scrambling (default 0)" << std::endl;
 }
 
-bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload, unsigned &regionSize, unsigned short &associativity, short &idx, long long int &operations, char *tpath, char *rpath, unsigned short &traceSize, unsigned short &numTraces, bool &src){
+bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload, unsigned &regionSize, unsigned long long int &associativity, short &idx, long long int &operations, char *tpath, char *rpath, unsigned short &traceSize, unsigned short &numTraces, bool &src){
 
   if(argc < 3){ 
     printUsage("Not enough arguments\n"); 
@@ -371,7 +371,7 @@ int main(int argc, char ** argv){
   unsigned short numTraces;
   unsigned short factor;
   unsigned short pids[256];
-  unsigned short associativity;
+  unsigned long long int associativity;
 
   if(!parseArgs(argc, argv, memorySize, workload, regionSize, associativity, idx, max_ops, trace_path, result_path, traceSize, numTraces, scrambling)){
     return false;
