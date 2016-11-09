@@ -2,6 +2,7 @@
 #
 ##########################
 # $1: Workload number
+# $2: Scrambling option 
 ##########################
 
 # 0 - Memcached
@@ -12,25 +13,23 @@
 # 5 - Cassandra
 # 6 - Neo4j
 
-workload_path="/home/parsacom/vol/icfiler3-ext/picorel/ASPLOS2017/pin-traces/"
+
+workload_path="/mnt/raid10/pin-traces/"
 workload_name=( "memcached" "rocksdb" "mysql" "tpch" "tpcds" "cassandra" "neo4j" )
-result_path="/net/parsafiler4/users/picorel/ISCA2017/associativity/"
+result_path="/mnt/raid10/results/memory/"
 memory_sizes=( 8 8 8 32 16 8 8 )
 memory_tool_sizes=( 8 8 8 32 16 8 12 )
 number_processes=( 1 2 4 8 16 32 64 )
-#associativity=( 1 2 4 8 16 32 64 128 )
-associativity=( 256 512 1024 2048 )
-operations=1000000000
+associativity=( 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536 131072 )
+operations=-1
 page_size=4096
-num_vaults=64
-wp_entries=1024
 cores=-1 # -1 all cores
 
-echo -e "Workload Path: $workload_path"
-echo -e "Result Path: $result_path"
+#echo -e "Workload Path: $workload_path"
+#echo -e "Result Path: $result_path"
 
 #for i in 0 1 2 3 4 6 # All except Cassandra
-for i in $1 # All except Cassandra
+for i in $1 
 do
   echo -e "====================================="
   echo -e "Workload: ${workload_name[$i]}"
@@ -45,8 +44,8 @@ do
     for k in "${associativity[@]}"
     do
 
-      #We should run associativities at least equal to the number of processes
-      if [ "$j" -gt "$k" ]
+      #We should run associativities at least equal to the number of processes if scrambling is not enabled '0'
+      if [ "$2" -eq 0 ] && [ "$j" -gt "$k" ]
       then
         continue
       fi
@@ -54,8 +53,9 @@ do
       echo -e "Associativity: $k"
       echo -e "================="
  
-      #echo "Input: $((1024*${memory_tool_sizes[$i]})) $i $page_size $k $cores $operations $workload_path${workload_name[$i]}"/"${memory_sizes[$i]}"GB/" $result_path $num_vaults $wp_entries ${memory_sizes[$i]} $j\n"
-      ./Fast3DCacheImpl $((1024*${memory_tool_sizes[$i]})) $i $page_size $k $cores $operations $workload_path${workload_name[$i]}"/"${memory_sizes[$i]}"GB/" $result_path $num_vaults $wp_entries ${memory_sizes[$i]} $j &
+      #echo "Input: $((1024*${memory_tool_sizes[$i]})) $i $page_size $k $cores $operations $workload_path${workload_name[$i]}"/"${memory_sizes[$i]}"GB/" $result_path ${memory_sizes[$i]} $j $2\n"
+      ./Fast3DCacheImpl $((1024*${memory_tool_sizes[$i]})) $i $page_size $k $cores $operations $workload_path${workload_name[$i]}"/"${memory_sizes[$i]}"GB/" $result_path ${memory_sizes[$i]} $j $2 > $result_path${workload_name[$i]}"_"$j"x_"${memory_sizes[$i]}"MB_"${memory_tool_sizes[$i]}"GB_"$k"ways_"$2 &
+
     done
 
     wait #Wait for the processes 
