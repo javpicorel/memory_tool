@@ -94,7 +94,14 @@ char* workloads[] =     {"memcached",
                          "tpcds-filtered", 
                          "cassandra-filtered", 
                          "neo4j-filtered", 
-                         "test-filtered"};
+                         "test-filtered",
+                         "memcached-mixed",       
+                         "rocksdb-mixed",       
+                         "mysql-mixed",     
+                         "tpch-mixed", 
+                         "tpcds-mixed", 
+                         "cassandra-mixed"
+                         "neo4j-mixed"};
 
 char* workloadPaths[] = {"pinatrace-memcached",     
                          "pinatrace-rocksdb", 
@@ -111,9 +118,19 @@ char* workloadPaths[] = {"pinatrace-memcached",
                          "pinatrace-filtered-tpcds",
                          "pinatrace-filtered-cassandra", 
                          "pinatrace-filtered-neo4j", 
-                         "pinatrace-filtered-test"};
+                         "pinatrace-filtered-test",
+                         "pinatrace-memcached",     
+                         "pinatrace-rocksdb", 
+                         "pinatrace-mysql", 
+                         "pinatrace-tpch", 
+                         "pinatrace-tpcds", 
+                         "pinatrace-cassandra",
+                         "pinatrace-neo4j"}; 
 
 //Scale factor
+#define S1 1
+#define S2 2
+#define S4 4
 #define S8 8
 #define S16 16
 #define S32 32
@@ -398,25 +415,104 @@ int main(int argc, char ** argv){
   std::cout<<"Number of sets: " << size << std::endl;
   std::cout<<"=======================================================" << std::endl;
 
+  std::string *strTest;
+  //strTest = (std::string *) malloc(sizeof(std::string) * numTraces);
+  strTest = new std::string[numTraces];
+  for (unsigned int i = 0; i < numTraces; i++){
+    //strTest[i] = new std::string(trace_path);
+    strTest[i].append(trace_path);
+    strTest[i].append(workloadPaths[workload]);
+  }
+
   std::string str(trace_path);
   str.append(workloadPaths[workload]);
 
-  switch(traceSize){
-    case S8:
-      str.append("-8gb");
-      break;
-    case S16:
-      str.append("-16gb");
-      break;
-    case S32:
-      str.append("-32gb");
-      break;
-    case S64:
-      str.append("-64gb");
-      break;
-    default:
-      printf("Error: Trace size not 8/16/32/64\n");
-      return false;
+  if (workload < 16){ //Single trace 
+
+    switch(traceSize){
+      case S1:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-1gb");
+        }
+        str.append("-1gb");
+        break;
+      case S2:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-2gb");
+        }
+        str.append("-2gb");
+        break;
+      case S4:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-4gb");
+        }
+        str.append("-4gb");
+        break;
+      case S8:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-8gb");
+        }
+        str.append("-8gb");
+        break;
+      case S16:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-16gb");
+        }
+        str.append("-16gb");
+        break;
+      case S32:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-32gb");
+        }
+        str.append("-32gb");
+        break;
+      case S64:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-64gb");
+        }
+        str.append("-64gb");
+        break;
+      default:
+        printf("Error: Trace size not 8/16/32/64\n");
+        return false;
+    }
+
+  }else{ //Mix of traces
+
+    switch(traceSize){
+      case S2: 
+          strTest[0].append("-1gb");
+          strTest[1].append("-1gb");
+
+          if (numTraces != 2){
+            printf("The number of traces has to be 2 for a mix of 2GB\n");
+          }
+          
+        break;
+      case S4:
+        strTest[0].append("-1gb");
+        strTest[1].append("-1gb");
+        strTest[2].append("-2gb");
+
+        if (numTraces != 3){
+          printf("The number of traces has to be 3 for a mix of 4GB\n");
+        }
+        break;
+      case S8:
+        strTest[0].append("-1gb");
+        strTest[1].append("-1gb");
+        strTest[2].append("-2gb");
+        strTest[3].append("-4gb");
+
+        if (numTraces != 4){
+          printf("The number of traces has to be 4 for a mix of 8GB\n");
+        }
+        break;
+      default:
+        printf("Error: Trace size not 2/4/8\n");
+        return false; 
+    }
+   
   }
 
   cache_items_list_array = (std::list<key_value_pair_t> **) malloc(sizeof(std::list<key_value_pair_t> *) * size);
@@ -427,23 +523,38 @@ int main(int argc, char ** argv){
     cache_items_map_array[i] = new std::unordered_map<long long int, list_iterator_t>;
   }
 
+  char **cstrTest = (char **) malloc(sizeof(char *) * numTraces);
+  
+  for (unsigned int i = 0; i < numTraces; i++){
+    strTest[i].append(".out");
+    cstrTest[i] = new char [ strTest[i].size() + 1];
+    strcpy(cstrTest[i], strTest[i].c_str());
+  }
+
   str.append(".out");
   char* cstr = new char [ str.size() + 1];
   strcpy (cstr, str.c_str());
-  gzFile input = gzopen (cstr, "rb");
+  //gzFile input = gzopen (cstr, "rb");
+  gzFile *input; //Vector of gzFile descriptors
   compressedRecord message;
   uint64_t ops = 0;
 
-  std::cout<<"Input file : " << str << std::endl;
-  std::cout<<"=======================================================" << std::endl;
+  input = (gzFile *) malloc(sizeof(gzFile)*numTraces);
 
-  if (input == Z_NULL){
-    printf("Error: Cannot open trace file for %s.\n", cstr);
-    gzclose(input);
-    return false;
+  for (unsigned int i = 0; i < numTraces; i++){
+    input[i] = gzopen (cstrTest[i], "rb"); 
+    std::cout<<"Input file " << i << " : " << strTest[i] << std::endl;
+
+    if (input[i] == Z_NULL){
+      printf("Error: Cannot open trace file for %s.\n", cstrTest[i]);
+      gzclose(input[i]); 
+      return false; 
+    }
   }
 
-  for (int i=0; i < numTraces; i++){
+  std::cout<<"=======================================================" << std::endl;
+
+  for (unsigned int i=0; i < numTraces; i++){
     pids[i] = rand() % 65536; // 16-bit ASID
 
     printf("PID[%d]=%d\n", i, pids[i]);
@@ -451,58 +562,56 @@ int main(int argc, char ** argv){
     //pids[i] = i;
   }
 
-  while(!gzeof(input)){ //Memory Accesses
+  int trace = 0;
 
-     if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
-       break;
+  while(!gzeof(input[trace])){ //Memory Accesses
+  //for (unsigned int i = 0; i < numTraces; i++){
 
-     int code=gzread(input, &message, sizeof(compressedRecord));
-     //int code = 1;
+    if (trace == 0){
+      if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
+        break;
 
-     //message.address = rand() % (memorySize*2);
+      ops++;
+    }
 
-     if(code <= 0) {
-	     std::cout<< "Error, code=" << code << std::endl;
-       int err=0;
-       std::cout << gzerror(input, &err) << std::endl;
-	     std::cout << "gzerror code=" << err <<std::endl;
-       break;
-     } 
+    int code=gzread(input[trace], &message, sizeof(compressedRecord));
 
-     ops++;
-    
-     if ((ops % 10000000) == 0){
-     //if ((ops % 10000) == 0){
-       printf("Number of ops %llu...\n", (unsigned long long) ops);
-     }
+    if(code <= 0) {
+      std::cout<< "Error, code=" << code << std::endl;
+      int err=0;
+      std::cout << gzerror(input[trace], &err) << std::endl;
+      std::cout << "gzerror code=" << err <<std::endl;
+      break;
+    } 
 
-     for (unsigned short pid = 0; pid < numTraces; pid++){ //Number of processes we are simulating
+    if ((trace == 0) && ((ops % 10000000) == 0)){
+    //if ((trace == 0) && ((ops % 10) == 0)){
+      printf("Trace[%d]: Number of ops %llu...\n", trace, (unsigned long long) ops);
+    }
 
-       //printf("Address: %llx, VPN: %llx, PID: %x, PID+VPN: %llx\n", message.address, computeVPN(message.address), pids[pid], computeVPN((((unsigned long long int) pids[pid]) << 48) ^ message.address));
-       
-       //bool hit = exists(computeVPN(message.address));
-       bool hit = get( computeVPN( (((unsigned long long int) pids[pid]) << 48)  ^ message.address ) , pids[pid]);
-       ++accesses;
+    bool hit = get( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ) , pids[trace]);
+    ++accesses;
 
+    if (!hit){
+      put( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ), 0, pids[trace]);
 
-       if (!hit){
-         //put(computeVPN(message.address), 0);
-         put( computeVPN( (((unsigned long long int) pids[pid]) << 48)  ^ message.address ), 0, pids[pid]);
+      inserts++;
 
-         inserts++;
+      misses++;
+    }else{
+      hits++;
+    }
 
-         misses++;
-       }else{
-         hits++;
-       }
-     }
+    trace++;
+    trace= trace % numTraces;
   }
 
   printf("Ops count: %llu\n", (unsigned long long int) ops);
  
   displayStats();
-  //display();
-  gzclose(input);
+  for (unsigned int i = 0; i < numTraces; i++){
+    gzclose(input[i]); 
+  }
   return true;
 }
 
