@@ -144,7 +144,7 @@ struct DataItem {
 
 uint64_t size; //Number of sets
 uint64_t region_size;
-bool scrambling;
+short scrambling;
 
 struct DataItem** hashArray; 
 struct DataItem* dummyItem;
@@ -238,12 +238,16 @@ void put(long long int key, int data, unsigned short pid){
 
 bool get(long long int key, unsigned short pid) {
   unsigned long long int setIndex;
-  if (scrambling){
+  if (scrambling == 1){
     setIndex = hashCode(key, pid);
   }
-  else{
+  else if (scrambling == 0){
     setIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    setIndex = foldCode(key);
   }
+
   //unsigned long long int setIndex = hashCode(key, 0);
   //printf("Key: %llx, Index: %lld\n", key, setIndex);
  
@@ -257,6 +261,7 @@ bool get(long long int key, unsigned short pid) {
   }
 }
 
+//TODO: exists is depreciated
 bool exists(long long int key){
   unsigned long long int setIndex = hashCode(key, 0);
 
@@ -316,7 +321,7 @@ void printUsage(std::string s){
  std::cout<<"    h - ASID scrambling (default 0)" << std::endl;
 }
 
-bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload, unsigned &regionSize, unsigned long long int &associativity, short &idx, long long int &operations, char *tpath, char *rpath, unsigned short &traceSize, unsigned short &numTraces, bool &src){
+bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload, unsigned &regionSize, unsigned long long int &associativity, short &idx, long long int &operations, char *tpath, char *rpath, unsigned short &traceSize, unsigned short &numTraces, short &src){
 
   if(argc < 3){ 
     printUsage("Not enough arguments\n"); 
@@ -386,7 +391,7 @@ bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload,
   }
 
   if (!((src == 0) || (src == 1) || (src == 2))){
-    printUsage("Address scrambling = 1 or = 0"); 
+    printUsage("Address scrambling = 1 or = 0 or = 2"); 
     return false;
   }
 
@@ -439,6 +444,9 @@ int main(int argc, char ** argv){
        foldCount = 64/LOG2(size) + 1; 
      }
    }
+
+  std::cout<<"Fold count: " << foldCount << std::endl;
+  std::cout<<"=======================================================" << std::endl;
 
   std::string *strTest;
   //strTest = (std::string *) malloc(sizeof(std::string) * numTraces);
