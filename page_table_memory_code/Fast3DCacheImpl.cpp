@@ -157,6 +157,8 @@ unsigned long long int accesses = 0;
 unsigned long long int hits = 0;
 unsigned long long int misses = 0;
 
+unsigned long long int foldCount = 0;
+
 //////////////////////////////////////////////////////////////////////////////////////
 unsigned long long int computeVPN(unsigned long long int key) {
   //return key/region_size;
@@ -170,6 +172,18 @@ unsigned long long int hashCode(unsigned long long int key, unsigned short pid) 
   return tmp % size;
 }
 
+unsigned long long int foldCode(unsigned long long int key) {
+  //unsigned long long int tmp = key ^ pid;
+  unsigned long long int c, tmp=0;
+
+  for(unsigned int i=0; i < foldCount; i++){
+    c= key % size;
+    key/= size;
+    tmp^= c;
+  }
+  return tmp;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////
 typedef std::pair<long long int, int> key_value_pair_t;
 typedef std::list<key_value_pair_t>::iterator list_iterator_t;
@@ -180,11 +194,14 @@ std::unordered_map<long long int, list_iterator_t> **cache_items_map_array;
 
 void put(long long int key, int data, unsigned short pid){
   unsigned long long int setIndex;
-  if (scrambling){
+  if (scrambling == 1){
     setIndex = hashCode(key, pid);
   }
-  else{
+  else if (scrambling == 0){
     setIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    setIndex = foldCode(key);
   }
   
   //printf("Key: %llx, Index: %lld\n", key, setIndex);
@@ -368,7 +385,7 @@ bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload,
     src= 0;
   }
 
-  if (!((src == 0) || (src == 1))){
+  if (!((src == 0) || (src == 1) || (src == 2))){
     printUsage("Address scrambling = 1 or = 0"); 
     return false;
   }
@@ -414,6 +431,14 @@ int main(int argc, char ** argv){
   std::cout<<"Number of associativity: " << associativity << std::endl;
   std::cout<<"Number of sets: " << size << std::endl;
   std::cout<<"=======================================================" << std::endl;
+
+   if (LOG2(size) != 0){ //Make sure the number of sets is not 1, otherwise there is nothing to fold
+     if (64 % LOG2(size) == 0){ //Division between the address size (48 bits) concatenated with the ASID bits (16 bits) and the number of sets
+       foldCount = 64/LOG2(size);
+     }else{
+       foldCount = 64/LOG2(size) + 1; 
+     }
+   }
 
   std::string *strTest;
   //strTest = (std::string *) malloc(sizeof(std::string) * numTraces);
