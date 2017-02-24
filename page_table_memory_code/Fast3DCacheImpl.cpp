@@ -101,7 +101,8 @@ char* workloads[] =     {"memcached",
                          "tpch-mixed", 
                          "tpcds-mixed", 
                          "cassandra-mixed"
-                         "neo4j-mixed"};
+                         "neo4j-mixed",
+                         "uniform"};
 
 char* workloadPaths[] = {"pinatrace-memcached",     
                          "pinatrace-rocksdb", 
@@ -125,7 +126,8 @@ char* workloadPaths[] = {"pinatrace-memcached",
                          "pinatrace-tpch", 
                          "pinatrace-tpcds", 
                          "pinatrace-cassandra",
-                         "pinatrace-neo4j"}; 
+                         "pinatrace-neo4j",
+                         "pinatrace-uniform"}; 
 
 //Scale factor
 #define S1 1
@@ -204,7 +206,7 @@ void put(long long int key, int data, unsigned short pid){
     setIndex = foldCode(key);
   }
   
-  //printf("Key: %llx, Index: %lld\n", key, setIndex);
+  //printf("Put-Key: %llx, Index: %lld\n", key, setIndex);
 
   auto it = cache_items_map_array[setIndex]->find(key);
 
@@ -249,14 +251,16 @@ bool get(long long int key, unsigned short pid) {
   }
 
   //unsigned long long int setIndex = hashCode(key, 0);
-  //printf("Key: %llx, Index: %lld\n", key, setIndex);
+  //printf("Get-Key: %llx, Index: %lld\n", key, setIndex);
  
   auto it = cache_items_map_array[setIndex]->find(key);
 
   if (it == cache_items_map_array[setIndex]->end()){
+    //printf("False\n");
     return false;
   } else {
     cache_items_list_array[setIndex]->splice(cache_items_list_array[setIndex]->begin(), *(cache_items_list_array[setIndex]), it->second);
+    //printf("Hit\n");
     return true;
   }
 }
@@ -512,40 +516,50 @@ int main(int argc, char ** argv){
 
   }else{ //Mix of traces
 
-    switch(traceSize){
-      case S2: 
+    if (workload != 22){
+
+      switch(traceSize){
+        case S2: 
+
+            if (numTraces != 2){
+              printf("The number of traces has to be 2 for a mix of 2GB\n");
+              return false;
+            }
+            strTest[0].append("-1gb");
+            strTest[1].append("-1gb");
+          
+          break;
+        case S4:
+
+          if (numTraces != 3){
+            printf("The number of traces has to be 3 for a mix of 4GB\n");
+            return false;
+         }
+
           strTest[0].append("-1gb");
           strTest[1].append("-1gb");
+          strTest[2].append("-2gb");
 
-          if (numTraces != 2){
-            printf("The number of traces has to be 2 for a mix of 2GB\n");
+          break;
+        case S8:
+
+          if (numTraces != 4){
+            printf("The number of traces has to be 4 for a mix of 8GB\n");
+            return false;
           }
-          
-        break;
-      case S4:
-        strTest[0].append("-1gb");
-        strTest[1].append("-1gb");
-        strTest[2].append("-2gb");
 
-        if (numTraces != 3){
-          printf("The number of traces has to be 3 for a mix of 4GB\n");
-        }
-        break;
-      case S8:
-        strTest[0].append("-1gb");
-        strTest[1].append("-1gb");
-        strTest[2].append("-2gb");
-        strTest[3].append("-4gb");
+          strTest[0].append("-1gb");
+          strTest[1].append("-1gb");
+          strTest[2].append("-2gb");
+          strTest[3].append("-4gb");
 
-        if (numTraces != 4){
-          printf("The number of traces has to be 4 for a mix of 8GB\n");
-        }
-        break;
-      default:
-        printf("Error: Trace size not 2/4/8\n");
-        return false; 
-    }
+          break;
+        default:
+          printf("Error: Trace size not 2/4/8\n");
+          return false; 
+      }
    
+    }
   }
 
   cache_items_list_array = (std::list<key_value_pair_t> **) malloc(sizeof(std::list<key_value_pair_t> *) * size);
@@ -556,36 +570,43 @@ int main(int argc, char ** argv){
     cache_items_map_array[i] = new std::unordered_map<long long int, list_iterator_t>;
   }
 
-  char **cstrTest = (char **) malloc(sizeof(char *) * numTraces);
-  
-  for (unsigned int i = 0; i < numTraces; i++){
-    strTest[i].append(".out");
-    cstrTest[i] = new char [ strTest[i].size() + 1];
-    strcpy(cstrTest[i], strTest[i].c_str());
-  }
-
-  str.append(".out");
-  char* cstr = new char [ str.size() + 1];
-  strcpy (cstr, str.c_str());
-  //gzFile input = gzopen (cstr, "rb");
   gzFile *input; //Vector of gzFile descriptors
+  char **cstrTest = (char **) malloc(sizeof(char *) * numTraces);
   compressedRecord message;
   uint64_t ops = 0;
+  char* cstr;
 
-  input = (gzFile *) malloc(sizeof(gzFile)*numTraces);
+  unsigned long long int addresses[numTraces];
 
-  for (unsigned int i = 0; i < numTraces; i++){
-    input[i] = gzopen (cstrTest[i], "rb"); 
-    std::cout<<"Input file " << i << " : " << strTest[i] << std::endl;
+  if (workload != 22){
 
-    if (input[i] == Z_NULL){
-      printf("Error: Cannot open trace file for %s.\n", cstrTest[i]);
-      gzclose(input[i]); 
-      return false; 
+
+    for (unsigned int i = 0; i < numTraces; i++){
+      strTest[i].append(".out");
+      cstrTest[i] = new char [ strTest[i].size() + 1];
+      strcpy(cstrTest[i], strTest[i].c_str());
     }
-  }
 
-  std::cout<<"=======================================================" << std::endl;
+    str.append(".out");
+    cstr = new char [ str.size() + 1];
+    strcpy (cstr, str.c_str());
+
+    input = (gzFile *) malloc(sizeof(gzFile)*numTraces);
+
+    for (unsigned int i = 0; i < numTraces; i++){
+      input[i] = gzopen (cstrTest[i], "rb"); 
+      std::cout<<"Input file " << i << " : " << strTest[i] << std::endl;
+
+      if (input[i] == Z_NULL){
+        printf("Error: Cannot open trace file for %s.\n", cstrTest[i]);
+        gzclose(input[i]); 
+        return false; 
+      }
+    }
+
+    std::cout<<"=======================================================" << std::endl;
+
+  }
 
   for (unsigned int i=0; i < numTraces; i++){
     pids[i] = rand() % 65536; // 16-bit ASID
@@ -597,53 +618,108 @@ int main(int argc, char ** argv){
 
   int trace = 0;
 
-  while(!gzeof(input[trace])){ //Memory Accesses
-  //for (unsigned int i = 0; i < numTraces; i++){
+  if (workload != 22){ //Not the uniform workload
 
-    if (trace == 0){
-      if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
+    while(!gzeof(input[trace])){ //Memory Accesses
+    //for (unsigned int i = 0; i < numTraces; i++){
+
+      if (trace == 0){
+        if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
+          break;
+
+        ops++;
+      }
+
+      int code=gzread(input[trace], &message, sizeof(compressedRecord));
+
+      if(code <= 0) {
+        std::cout<< "Error, code=" << code << std::endl;
+        int err=0;
+        std::cout << gzerror(input[trace], &err) << std::endl;
+        std::cout << "gzerror code=" << err <<std::endl;
         break;
+      } 
 
-      ops++;
+      if ((trace == 0) && ((ops % 10000000) == 0)){
+      //if ((trace == 0) && ((ops % 10) == 0)){
+        printf("Trace[%d]: Number of ops %llu...\n", trace, (unsigned long long) ops);
+      }
+ 
+      bool hit = get( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ) , pids[trace]);
+      ++accesses;
+
+      if (!hit){
+        put( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ), 0, pids[trace]);
+
+        inserts++;
+
+        misses++;
+      }else{
+        hits++;
+      }
+
+      trace++;
+      trace= trace % numTraces;
+    }
+  }else{ // Uniform workload
+
+    for (unsigned int i = 0; i < numTraces; i++){
+      addresses[i] = i*(size/numTraces)*4096;
     }
 
-    int code=gzread(input[trace], &message, sizeof(compressedRecord));
+    while(true){
 
-    if(code <= 0) {
-      std::cout<< "Error, code=" << code << std::endl;
-      int err=0;
-      std::cout << gzerror(input[trace], &err) << std::endl;
-      std::cout << "gzerror code=" << err <<std::endl;
-      break;
-    } 
+      addresses[trace] = (addresses[trace] + 4096);
+      //addresses[trace] = ((rand() % (size/numTraces) ) * 4096 );
 
-    if ((trace == 0) && ((ops % 10000000) == 0)){
-    //if ((trace == 0) && ((ops % 10) == 0)){
-      printf("Trace[%d]: Number of ops %llu...\n", trace, (unsigned long long) ops);
+      if ((addresses[trace] >> 12) == ((trace+1)*(size/numTraces))){
+        //addresses[trace] = 0;
+        addresses[trace] = trace*(size/numTraces)*4096;
+      }
+
+      message.address = addresses[trace];
+
+      printf("Trace[%d]: %llu, VPN: %llu\n", trace, message.address, message.address >> 12);
+       
+      if (trace == 0){
+        if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
+          break;
+
+        ops++;
+      }
+
+      if ((trace == 0) && ((ops % 10000000) == 0)){
+      //if ((trace == 0) && ((ops % 10) == 0)){
+        printf("Trace[%d]: Number of ops %llu...\n", trace, (unsigned long long) ops);
+      }
+
+      bool hit = get( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ) , pids[trace]);
+      ++accesses;
+
+      if (!hit){
+        put( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ), 0, pids[trace]);
+
+        inserts++;
+
+        misses++;
+      }else{
+        hits++;
+      }
+ 
+      trace++;
+      trace= trace % numTraces;
     }
 
-    bool hit = get( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ) , pids[trace]);
-    ++accesses;
-
-    if (!hit){
-      put( computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address ), 0, pids[trace]);
-
-      inserts++;
-
-      misses++;
-    }else{
-      hits++;
-    }
-
-    trace++;
-    trace= trace % numTraces;
   }
 
   printf("Ops count: %llu\n", (unsigned long long int) ops);
  
   displayStats();
-  for (unsigned int i = 0; i < numTraces; i++){
-    gzclose(input[i]); 
+  
+  if (workload != 22){
+    for (unsigned int i = 0; i < numTraces; i++){
+      gzclose(input[i]); 
+    }
   }
   return true;
 }
