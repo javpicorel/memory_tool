@@ -1,7 +1,7 @@
-#include <core/stats.hpp>
-#include "common.hpp"
-#include "CacheStats.hpp"
-#include "PageCache.hpp"
+//#include <core/stats.hpp>
+//#include "common.hpp"
+//#include "CacheStats.hpp"
+//#include "PageCache.hpp"
 #include <zlib.h>
 #include <fstream>
 
@@ -9,6 +9,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
+#include <iostream>
+
+#include <unordered_map>
+#include <list>
 
 #define LOG2(x)         \
   ((x)==1 ? 0 :         \
@@ -89,7 +94,15 @@ char* workloads[] =     {"memcached",
                          "tpcds-filtered", 
                          "cassandra-filtered", 
                          "neo4j-filtered", 
-                         "test-filtered"};
+                         "test-filtered",
+                         "memcached-mixed",       
+                         "rocksdb-mixed",       
+                         "mysql-mixed",     
+                         "tpch-mixed", 
+                         "tpcds-mixed", 
+                         "cassandra-mixed"
+                         "neo4j-mixed",
+                         "uniform"};
 
 char* workloadPaths[] = {"pinatrace-memcached",     
                          "pinatrace-rocksdb", 
@@ -106,9 +119,20 @@ char* workloadPaths[] = {"pinatrace-memcached",
                          "pinatrace-filtered-tpcds",
                          "pinatrace-filtered-cassandra", 
                          "pinatrace-filtered-neo4j", 
-                         "pinatrace-filtered-test"};
+                         "pinatrace-filtered-test",
+                         "pinatrace-memcached",     
+                         "pinatrace-rocksdb", 
+                         "pinatrace-mysql", 
+                         "pinatrace-tpch", 
+                         "pinatrace-tpcds", 
+                         "pinatrace-cassandra",
+                         "pinatrace-neo4j",
+                         "pinatrace-uniform"}; 
 
 //Scale factor
+#define S1 1
+#define S2 2
+#define S4 4
 #define S8 8
 #define S16 16
 #define S32 32
@@ -120,15 +144,21 @@ struct DataItem {
    unsigned short pid;
 };
 
-uint64_t size; //Size of the page table
+uint64_t size; //Number of sets
 uint64_t region_size;
 uint64_t numVaults;
+short scrambling;
 
 struct DataItem** hashArray; 
 struct DataItem* dummyItem;
 struct DataItem* item;
 
 //Stats
+//unsigned long long int inserts = 0;
+//unsigned long long int cold = 0;
+//unsigned long long int accesses = 0;
+//unsigned long long int hits = 0;
+//unsigned long long int misses = 0;
 unsigned long long int inserts = 0;
 unsigned long long int deletes = 0;
 unsigned long long int conflicts = 0;
@@ -138,325 +168,218 @@ unsigned long long int hits = 0;
 unsigned long long int misses = 0;
 unsigned long long int removesFailed = 0;
 
+unsigned long long int foldCount = 0;
+
+//////////////////////////////////////////////////////////////////////////////////////
 unsigned long long int computeVPN(unsigned long long int key) {
-  //return key/region_size;
   return key >> 12;
-  //return key;
 }
 
 unsigned long long int hashCode(unsigned long long int key, unsigned short pid) {
-/*
-   unsigned long long int key_aux = key;
-   unsigned long long int c;
-   unsigned long long int hash= 0;
-
-   c = key_aux % size;
-   key_aux = key_aux / size;
-   hash = hash ^ c;
-   c = key_aux % size;
-   key_aux = key_aux / size;
-   hash = hash ^ c;
-   c = key_aux % size;
-   key_aux = key_aux / size;
-   hash = hash ^ c;
-
-   return hash % size;
-*/
-  // unsigned long long int aux = EXTRACT_BITS(key, 19, 29);
-   
- //  return (key ^ aux) % size;
-
-  //unsigned long long int key_tmp = computeVPN(key);
-
-  //key_tmp = key_tmp ^ pid; 
-   
-  //return key % size;
   unsigned long long int tmp = key ^ pid;
 
   return tmp % size;
-
-}
-/*
-unsigned long long int hashCode(unsigned long long int key) {
-  key = (~key) + (key << 21); // key = (key << 21) - key - 1;
-  key = key ^ (key >> 24);
-  key = (key + (key << 3)) + (key << 8); // key * 265
-  key = key ^ (key >> 14);
-  key = (key + (key << 2)) + (key << 4); // key * 21
-  key = key ^ (key >> 28);
-  key = key + (key << 31);
-  return key % size;
-}
-*/
-
-unsigned long long int computeVault(unsigned long long int key, unsigned short pid) {
-   //unsigned long long int key_tmp = hashCode(key, pid);
-
-   //return key_tmp % numVaults;
-   unsigned long long int tmp = key ^ pid;
-   return tmp % numVaults;
 }
 
-//struct DataItem *search(unsigned long long int key) {
+unsigned long long int foldCode(unsigned long long int key) {
+  unsigned long long int c, tmp=0;
+
+  for(unsigned int i=0; i < foldCount; i++){
+    c= key % size;
+    key/= size;
+    tmp^= c;
+  }
+  return tmp;
+}
+
+unsigned long long int computeVault(unsigned long long int key, unsigned short pid){
+  //unsigned long long int tmp;
+  //TODO: PID
+
+  return key % numVaults;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
 struct DataItem *search(unsigned long long int key, unsigned short pid) {
    unsigned short conflicts_tmp = 0;
    unsigned long long int retries_tmp = 0;
-   unsigned long long counter=0;
+   unsigned long long counter = 0;
 
-   //get the hash 
-   unsigned long long int hashIndex = hashCode(key, pid);  
+   unsigned long long int hashIndex;
+   if (scrambling == 1){
+     hashIndex = hashCode(key, pid);
+   }
+   else if (scrambling == 0){
+     hashIndex = hashCode(key, 0);
+   }else{
+     //Scrambling == 2
+     hashIndex = foldCode(key);
+   }
+
+   //printf("VPN: %llx, PID: %d, Index: %llu\n", key, pid, hashIndex);
 
    ++searches;
 
-   //if (hashArray[hashIndex] != NULL)
-   // printf("Search, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d, hashIndex: %llu\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid, hashIndex);
-
-   if((hashArray[hashIndex] != NULL) && (((hashArray[hashIndex]->key != (long long int) key)) || (hashArray[hashIndex]->pid != pid))){
-     //printf("CONFLICT => Search conflict, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid);
-     //++conflicts;
+   if ((hashArray[hashIndex] != NULL) && (((hashArray[hashIndex]->key != (long long int) key)) || (hashArray[hashIndex]->pid != pid))){
      ++conflicts_tmp;
-     //printf("Conflict in %llu\n", hashIndex);
    }
-	
-   //move in array until an empty 
-   while((hashArray[hashIndex] != NULL) && (counter < size)) {
-      //printf("Index: %llu\n", hashIndex);
-	
-      if((hashArray[hashIndex]->key == (long long int) key) && (hashArray[hashIndex]->pid == pid)){
-         //printf("HIT => Search conflict, Parameter => KEY: %llx, PID: %d, Entry => KEY: %llx, PID: %d\n", key, pid, hashArray[hashIndex]->key, hashArray[hashIndex]->pid);
-         ++hits;
-         conflicts += conflicts_tmp;
-         retries += retries_tmp;
-         return hashArray[hashIndex]; 
-      }
-			
-      //go to next cell
-      ++hashIndex;
 
-      ++counter;
+   while ((hashArray[hashIndex] != NULL) && (counter < size)){
+     if ((hashArray[hashIndex]->key == (long long int) key) && (hashArray[hashIndex]->pid == pid)){
+       ++hits;
+       conflicts += conflicts_tmp;
+       retries += retries_tmp;
+       return hashArray[hashIndex];
+     } 
 
-      //account for the retry
-      //++retries;
-      ++retries_tmp;
-		
-      //wrap around the table
-      hashIndex %= size;
-   }      
+     ++hashIndex;
+     ++counter;
+     ++retries_tmp;
 
+     hashIndex %= size;
+   }
+ 
    conflicts += conflicts_tmp;
    retries += retries_tmp;
-	
    ++misses;
-   return NULL;        
-}
-
-struct DataItem *get_first_key(long long int key, unsigned short pid){
-   unsigned long long int hashIndex = hashCode(key, pid);  
-   unsigned long long int counter = 0;
-
-   //move in array until an empty or deleted cell
-   //while(hashArray[hashIndex] != NULL) {
-   while(counter < size) {
-
-      if ((hashArray[hashIndex] != NULL) && (hashArray[hashIndex]->key != -1)){
-        return hashArray[hashIndex];
-      }
-
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
-
-      counter++;
-   }
 
    return NULL;
 }
 
-struct DataItem *get_last_key(long long int key, unsigned short pid){
-   unsigned long long int hashIndex = hashCode(key, pid);  
-   unsigned long long int counter = 0;
+bool replace(long long int key, int data, unsigned short pid){
+  struct DataItem *item;
 
-   //if ((hashArray[hashIndex] != NULL) && (hashArray[hashIndex]->key != -1)){
-   //   return hashArray[hashIndex];
-   //}
+  unsigned long long int hashIndex;
+  unsigned long long int prevIndex = hashIndex;
+  unsigned long long int lenght = 0;
+  unsigned long long int counter = 0;
 
+  if (scrambling == 1){
+    hashIndex = hashCode(key, pid);
+  }
+  else if (scrambling == 0){
+    hashIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    hashIndex = foldCode(key);
+  }
+  
+  if (hashArray[hashIndex] == NULL)
+    return false;
 
-   //move in array until an empty or deleted cell
-   //while(hashArray[hashIndex] != NULL) {
-   while(counter < size) {
+  while (hashArray[hashIndex] != NULL){
+    ++lenght;
+    ++hashIndex;
+    hashIndex %= size;
+  }
 
-      //if ((hashArray[hashIndex] != NULL) && (hashArray[hashIndex]->key != -1)){
-      if ((hashArray[hashIndex] == NULL) || (hashArray[hashIndex]->key == -1)){
-        if (counter == 0){
-          return hashArray[hashIndex];
-        }else{
-          if (hashIndex != 0){
-            return hashArray[(hashIndex - 1)];
-          }else{
-            return hashArray[size - 1];
-          }
-        }
-      }
+  if (scrambling == 1){
+    hashIndex = hashCode(key, pid);
+  }
+  else if (scrambling == 0){
+    hashIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    hashIndex = foldCode(key);
+  }
 
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
+  while (hashArray[hashIndex] != NULL){
+    prevIndex = hashIndex;
 
-      counter++;
-   }
+    if (counter == (rand() % lenght)){
+      break;
+    }
+  
+    ++counter;
+    ++hashIndex;
+ 
+    hashIndex %= size;
+  }
 
-   return NULL;
+  if (hashArray[prevIndex]->key != -1){
+    item= hashArray[prevIndex];
+    item->data = data;
+    item->key = key;
+    item->pid = pid;
+    return true;
+  }else{
+    return false;
+  }
 }
 
-bool replace(long long int key, int data, unsigned short pid) {
+void insert(long long int key, int data, unsigned short pid){
+  struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
+  item->data = data;
+  item->key = (long long int) key;
+  item->pid = pid;
 
-   //printf("Enter!\n");
+  unsigned long long int hashIndex;
+  if (scrambling == 1){
+    hashIndex = hashCode(key, pid);
+  }
+  else if (scrambling == 0){
+    hashIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    hashIndex = foldCode(key);
+  }
 
-   //struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
-   struct DataItem *item;
-   //item->data = data;  
-   //item->key = (long long int) key;
-   //item->pid = pid;
+  ++inserts;
 
-   //get the hash 
-   unsigned long long int hashIndex = hashCode(key, pid);
-   unsigned long long int prevIndex = hashIndex;
-   unsigned long long int lenght = 0;
-   unsigned long long int counter = 0;
+  while ((hashArray[hashIndex] != NULL) && hashArray[hashIndex]->key != -1){ //TODO: This loop can be infinite
+    ++hashIndex;
+    
+    hashIndex %= size;
+  }
 
-   //++inserts;
-
-   //move in array until an empty or deleted cell
-   //while(hashArray[hashIndex] == NULL) {
-   if (hashArray[hashIndex] == NULL)
-     return false;
-
-   while(hashArray[hashIndex] != NULL) {
-      ++lenght;
-
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
-   }
-
-   hashIndex = hashCode(key, pid);
-
-   while(hashArray[hashIndex] != NULL) {
-      prevIndex = hashIndex;
-
-      if (counter == (rand() % lenght)){
-        break; 
-      }
-
-      ++counter;
-
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
-   }
-
-   //if (hashArray[hashIndex]->key != -1){
-   //  item= hashArray[hashIndex];
-   if (hashArray[prevIndex]->key != -1){
-     item= hashArray[prevIndex];
-     item->data = data;  
-     item->key = key;
-     item->pid = pid;
-     return true;
-   }else{
-     return false;
-   }
-
-/*
-   if ((hashArray[hashIndex] != NULL) && (hashArray[hashIndex]->key != -1)){
-     printf("True!\n");
-     item= hashArray[hashIndex];
-
-     item->data = data;  
-     item->key = key;
-     item->pid = pid;
-     return true;
-   }else{
-     //printf("False!\n");
-     return false;
-   }
-   */
+  hashArray[hashIndex] = item;
 }
 
-void insert(long long int key, int data, unsigned short pid) {
+struct DataItem* erase(struct DataItem* item){
+  long long int key = item->key;
+  unsigned short pid = item->pid;
 
-   struct DataItem *item = (struct DataItem*) malloc(sizeof(struct DataItem));
-   item->data = data;  
-   item->key = (long long int) key;
-   item->pid = pid;
+  unsigned long long int hashIndex;
+  if (scrambling == 1){
+    hashIndex = hashCode(key, pid);
+  }
+  else if (scrambling == 0){
+    hashIndex = hashCode(key, 0);
+  }else{
+    //Scrambling == 2
+    hashIndex = foldCode(key);
+  }
 
-   //get the hash 
-   unsigned long long int hashIndex = hashCode(key, pid);
+  while (hashArray[hashIndex] != NULL){
+    if ((hashArray[hashIndex]->key == key) && (hashArray[hashIndex]->pid == pid)){
+      struct DataItem* temp = hashArray[hashIndex];
 
-   ++inserts;
+      ++deletes;
 
-   //move in array until an empty or deleted cell
-   while(hashArray[hashIndex] != NULL && hashArray[hashIndex]->key != -1) {
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
-   }
-	
-   hashArray[hashIndex] = item;
-}
+      hashArray[hashIndex] = dummyItem;
+      return temp;
+    }
 
-struct DataItem* erase(struct DataItem* item) {
-   long long int key = item->key;
-   unsigned short pid = item->pid;
+    ++hashIndex;
 
-   //get the hash 
-   unsigned long long int hashIndex = hashCode(key, pid);
+    hashIndex %= size;
+  }
 
-   //++deletes;
-
-   //move in array until an empty
-   while(hashArray[hashIndex] != NULL) {
-	
-      if((hashArray[hashIndex]->key == key) && (hashArray[hashIndex]->pid == pid)) {
-         struct DataItem* temp = hashArray[hashIndex]; 
-			
-         ++deletes;
-         //assign a dummy item at deleted position
-         hashArray[hashIndex] = dummyItem; 
-         return temp;
-      }
-		
-      //go to next cell
-      ++hashIndex;
-		
-      //wrap around the table
-      hashIndex %= size;
-   }      
-	
-   return NULL;        
+  return NULL;
 }
 
 void display() {
    unsigned int i = 0;
-	
-   for(i = 0; i<size; i++) {
-	
+
+   for (i = 0; i<size; i++) {
+
       if(hashArray[i] != NULL)
          printf(" (%lld,%d,%d)\n",hashArray[i]->key,hashArray[i]->data,hashArray[i]->pid);
       else
          printf(" ~~ \n");
    }
-	
+
    printf("\n");
 }
 
@@ -472,7 +395,7 @@ void displayStats() {
     }
   }
   printf("Exit!\n");
-
+   
   std::cout<<"=====================================================" << std::endl;
   printf("Inserts: %llu\n", inserts);
   printf("Deletes: %llu\n", deletes);
@@ -493,38 +416,39 @@ void displayStats() {
   printf("Failed removes: %llu\n", removesFailed);
   std::cout<<"=====================================================" << std::endl;
 }
+                                                                    
+void printUsage(std::string s){
+  unsigned int numWorkloads = sizeof(workloads)/sizeof(workloads[0]);
 
-void printUsage(string s){
- unsigned int numWorkloads = sizeof(workloads)/sizeof(workloads[0]);
+  std::cout<<s<<std::endl;
+  std::cout<<"Usage: Fast3DCacheImpl m w (p) (i) (o) (t) (r) (v) (vs) (s) (np) (h) (f)"<< std::endl;
+  std::cout<<"    m - memory size in MB"<< std::endl;
+  std::cout<<"    w - workload (0-" << numWorkloads - 1 << ")" << std::endl;
 
- cout<<s<<endl;
- cout<<"Usage: Fast3DCacheImpl m w (p) (i) (o) (t) (r) (v) (vs) (s) (np) (f)"<< std::endl;
- cout<<"    m - vault size in MB"<< std::endl;
- cout<<"    w - workload (0-" << numWorkloads - 1 << ")" << std::endl;
+  for(unsigned int i=0; i < numWorkloads; i++)  
+    std::cout<<"        " << i << " - " << workloads[i] << std::endl;
 
- for(unsigned int i=0; i < numWorkloads; i++)  
-   cout<<"        " << i << " - " << workloads[i] << std::endl;
-
- cout<<"    p - page size in bytes (default 4096)" << std::endl;
- cout<<"    i - core id (default all cores)" << std::endl;
- cout<<"    o - number of operations to execute (default all operations in trace)" << std::endl;
- cout<<"    t - path traces (default /tmp)" << std::endl;
- cout<<"    r - path results (default /tmp)" << std::endl;
- cout<<"    v - number of vaults (default 64)" << std::endl;
- cout<<"    vi - vault id (default 0)" << std::endl;
- cout<<"    s - size of the workload trace (default 8)" << std::endl;
- cout<<"    np - number of workload traces (default 1)" << std::endl;
- cout<<"    f - factor of page table compared to the vault size (default 1)" << std::endl;
+  std::cout<<"    p - page size in bytes (default 4096)" << std::endl;
+  std::cout<<"    i - core id (default all cores)" << std::endl;
+  std::cout<<"    o - number of operations to execute (default all operations in trace)" << std::endl;
+  std::cout<<"    t - path traces (default /tmp)" << std::endl;
+  std::cout<<"    r - path results (default /tmp)" << std::endl;
+  std::cout<<"    v - number of vaults (default 16)" << std::endl;
+  std::cout<<"    vi - vault id (default 0)" << std::endl;
+  std::cout<<"    s - size of the workload trace (default 8)" << std::endl;
+  std::cout<<"    np - number of workload traces (default 1)" << std::endl;
+  std::cout<<"    h - ASID scrambling (default 0)" << std::endl;
+  std::cout<<"    f - factor of page table entries compared to the vault size in pages (default 1)" << std::endl;
 }
 
-bool parseArgs(int argc, char ** argv, unsigned &vaultSize, unsigned &workload, unsigned &regionSize, short &idx, long long int &operations, char *tpath, char *rpath, unsigned int &vault, unsigned int &vaultID, unsigned short &traceSize, unsigned short &numTraces, unsigned short &factor){
+bool parseArgs(int argc, char ** argv, unsigned &memorySize, unsigned &workload, unsigned &regionSize, short &idx, long long int &operations, char *tpath, char *rpath, unsigned int &vault, unsigned int &vaultID, unsigned short &traceSize, unsigned short &numTraces, short &src, unsigned short &factor){
 
   if(argc < 3){ 
-    printUsage("Not enough args"); 
+    printUsage("Not enough arguments\n"); 
     return false;
   }
 
-  vaultSize = atoi(argv[1]);
+  memorySize = atoi(argv[1]);
   workload=atoi(argv[2]);
 
   if (argc >= 4) 
@@ -532,8 +456,8 @@ bool parseArgs(int argc, char ** argv, unsigned &vaultSize, unsigned &workload, 
   else 
     regionSize = 4096;
 
-  if (vaultSize < 1 || vaultSize > 32768){
-    printUsage("Memory Size < 1 or > 32768MB "); 
+  if (memorySize < 1 || memorySize > 32768){
+    printUsage("Memory Size < 1 or > 32768MB"); 
     return false;
   }
 
@@ -562,13 +486,17 @@ bool parseArgs(int argc, char ** argv, unsigned &vaultSize, unsigned &workload, 
     strcpy(rpath, "/tmp/");
   }
 
-  if (argc >= 9) 
-    vault= (unsigned int) atoi(argv[8]);
-  else vault = 64;
+  if (argc >= 9){
+    vault= atoi(argv[8]);
+  }else{
+    vault= 16;
+  }
 
-  if (argc >= 10) 
-    vaultID= (unsigned int) atoi(argv[9]);
-  else vaultID = 0;
+  if (argc >= 10){
+    vaultID= atoi(argv[9]);
+  }else{
+    vaultID= 0;
+  }
 
   if (argc >= 11) 
     traceSize= (unsigned short) atoi(argv[10]);
@@ -583,15 +511,29 @@ bool parseArgs(int argc, char ** argv, unsigned &vaultSize, unsigned &workload, 
     return false;
   }
 
-  if (argc >= 13) 
-    factor= (unsigned short) atoi(argv[12]);
-  else factor = 1;
+  if (argc >= 13){
+    src= atoi(argv[12]);
+  }else{
+    src= 0;
+  }
+
+  if (!((src == 0) || (src == 1) || (src == 2))){
+    printUsage("Address scrambling = 1 or = 0 or = 2"); 
+    return false;
+  }
+
+  if (argc >= 14){
+    factor= atoi(argv[13]);
+  }else{
+    factor= 1;
+  }
 
   return true;
 }
 
 int main(int argc, char ** argv){
-  unsigned int workload, vaultSize, regionSize;
+  unsigned workload, vaultSize, regionSize;
+  unsigned int memorySize;
   short idx;
   long long int max_ops;
   char trace_path[80];
@@ -602,13 +544,12 @@ int main(int argc, char ** argv){
   unsigned short factor;
   unsigned short pids[256];
 
-  if(!parseArgs(argc, argv, vaultSize, workload, regionSize, idx, max_ops, trace_path, result_path, vault, vaultID, traceSize, numTraces, factor)){
+  if(!parseArgs(argc, argv, memorySize, workload, regionSize, idx, max_ops, trace_path, result_path, vault, vaultID, traceSize, numTraces, scrambling, factor)){
     return false;
   }
 
   //Size of the page table
-  size = ((vaultSize*1024*1024)/regionSize)*factor;
-  //size = vaultSize*factor;
+  size = (((unsigned long long int) memorySize*1024*1024)/regionSize/vault)*factor;
   region_size = regionSize;
   numVaults = vault;
 
@@ -620,40 +561,141 @@ int main(int argc, char ** argv){
   std::cout<<"Workload: " << workloads[workload] << std::endl;
   std::cout<<"Trace Size: " << traceSize << std::endl;
   std::cout<<"Number of traces: " << numTraces << std::endl;
-  std::cout<<"======================PageTable======================" << std::endl;
-  std::cout<<"Number of entries: " << size << std::endl;
+  std::cout<<"Scrambling: " << scrambling << std::endl;
+  std::cout<<"=========================Memory========================" << std::endl;
+  std::cout<<"Memory size: " << memorySize << std::endl;
   std::cout<<"Number of vaults: " << vault << std::endl;
+  std::cout<<"Number of pages: " << (size/factor) << std::endl;
   std::cout<<"VaultID: " << vaultID << std::endl;
-  std::cout<<"Factor page table: " << factor << std::endl;
-  std::cout<<"=====================================================" << std::endl;
+  std::cout<<"Number of entries (hash table): " << size << std::endl;
+  std::cout<<"=======================================================" << std::endl;
+
+   if (LOG2(size) != 0){ //Make sure the number of sets is not 1, otherwise there is nothing to fold
+     if (64 % LOG2(size) == 0){ //Division between the address size (48 bits) concatenated with the ASID bits (16 bits) and the number of sets
+       foldCount = 64/LOG2(size);
+     }else{
+       foldCount = 64/LOG2(size) + 1; 
+     }
+   }
+
+  std::cout<<"Fold count: " << foldCount << std::endl;
+  std::cout<<"=======================================================" << std::endl;
+
+  std::string *strTest;
+  //strTest = (std::string *) malloc(sizeof(std::string) * numTraces);
+  strTest = new std::string[numTraces];
+  for (unsigned int i = 0; i < numTraces; i++){
+    //strTest[i] = new std::string(trace_path);
+    strTest[i].append(trace_path);
+    strTest[i].append(workloadPaths[workload]);
+  }
 
   std::string str(trace_path);
   str.append(workloadPaths[workload]);
 
-  switch(traceSize){
-    case S8:
-      str.append("-8gb");
-      break;
-    case S16:
-      str.append("-16gb");
-      break;
-    case S32:
-      str.append("-32gb");
-      break;
-    case S64:
-      str.append("-64gb");
-      break;
-    default:
-      printf("Error: Trace size not 8/16/32/64\n");
-      return false;
+  if (workload < 16){ //Single trace 
+
+    switch(traceSize){
+      case S1:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-1gb");
+        }
+        str.append("-1gb");
+        break;
+      case S2:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-2gb");
+        }
+        str.append("-2gb");
+        break;
+      case S4:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-4gb");
+        }
+        str.append("-4gb");
+        break;
+      case S8:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-8gb");
+        }
+        str.append("-8gb");
+        break;
+      case S16:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-16gb");
+        }
+        str.append("-16gb");
+        break;
+      case S32:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-32gb");
+        }
+        str.append("-32gb");
+        break;
+      case S64:
+        for (unsigned int i = 0; i < numTraces; i++){
+          strTest[i].append("-64gb");
+        }
+        str.append("-64gb");
+        break;
+      default:
+        printf("Error: Trace size not 8/16/32/64\n");
+        return false;
+    }
+
+  }else{ //Mix of traces
+
+    if (workload != 22){
+
+      switch(traceSize){
+        case S2: 
+
+            if (numTraces != 2){
+              printf("The number of traces has to be 2 for a mix of 2GB\n");
+              return false;
+            }
+            strTest[0].append("-1gb");
+            strTest[1].append("-1gb");
+          
+          break;
+        case S4:
+
+          if (numTraces != 3){
+            printf("The number of traces has to be 3 for a mix of 4GB\n");
+            return false;
+         }
+
+          strTest[0].append("-1gb");
+          strTest[1].append("-1gb");
+          strTest[2].append("-2gb");
+
+          break;
+        case S8:
+
+          if (numTraces != 4){
+            printf("The number of traces has to be 4 for a mix of 8GB\n");
+            return false;
+          }
+
+          strTest[0].append("-1gb");
+          strTest[1].append("-1gb");
+          strTest[2].append("-2gb");
+          strTest[3].append("-4gb");
+
+          break;
+        default:
+          printf("Error: Trace size not 2/4/8\n");
+          return false; 
+      }
+   
+    }
   }
 
-  //Initialize Inverted page table
-  hashArray = (struct DataItem**) malloc(sizeof(struct DataItem*) * size); 
+  hashArray = (struct DataItem**) malloc(sizeof(struct DataItem*) * size);
 
   if (hashArray == NULL){
     printf("Error: Malloc for the page table failed\n");
-    exit(-1);
+    return -1;
   }
 
   for (unsigned long long i=0; i < size; i++){
@@ -662,137 +704,179 @@ int main(int argc, char ** argv){
 
   dummyItem = (struct DataItem*) malloc(sizeof(struct DataItem));
 
-  if (hashArray == NULL){
+  if (dummyItem == NULL){
     printf("Error: Malloc for the dummy item failed\n");
-    exit(-1);
+    return -1;
   }
 
   dummyItem->data = -1;
   dummyItem->key = -1;
 
-  str.append(".out");
-  char* cstr = new char [ str.size() + 1];
-  strcpy (cstr, str.c_str());
-  gzFile input = gzopen (cstr, "rb");
+  gzFile *input; //Vector of gzFile descriptors
+  char **cstrTest = (char **) malloc(sizeof(char *) * numTraces);
   compressedRecord message;
   uint64_t ops = 0;
+  char* cstr;
 
-  std::cout<<"Input file : " << str << std::endl;
-  std::cout<<"=======================================================" << std::endl;
+  unsigned long long int addresses[numTraces];
 
-  if (input == Z_NULL){
-    printf("Error: Cannot open trace file for %s.\n", cstr);
-    gzclose(input);
-    return false;
+  if (workload != 22){
+
+
+    for (unsigned int i = 0; i < numTraces; i++){
+      strTest[i].append(".out");
+      cstrTest[i] = new char [ strTest[i].size() + 1];
+      strcpy(cstrTest[i], strTest[i].c_str());
+    }
+
+    str.append(".out");
+    cstr = new char [ str.size() + 1];
+    strcpy (cstr, str.c_str());
+
+    input = (gzFile *) malloc(sizeof(gzFile)*numTraces);
+
+    for (unsigned int i = 0; i < numTraces; i++){
+      input[i] = gzopen (cstrTest[i], "rb"); 
+      std::cout<<"Input file " << i << " : " << strTest[i] << std::endl;
+
+      if (input[i] == Z_NULL){
+        printf("Error: Cannot open trace file for %s.\n", cstrTest[i]);
+        gzclose(input[i]); 
+        return false; 
+      }
+    }
+
+    std::cout<<"=======================================================" << std::endl;
+
   }
 
-  for (int i=0; i < numTraces; i++){
+  for (unsigned int i=0; i < numTraces; i++){
     pids[i] = rand() % 65536; // 16-bit ASID
 
     printf("PID[%d]=%d\n", i, pids[i]);
     //pids[i] = 0;
+    //pids[i] = i;
   }
 
-  while(!gzeof(input)){ //Memory Accesses
+  int trace = 0;
 
-     if ((max_ops != -1) && (ops > (unsigned long long int) max_ops))
-       break;
+  if (workload != 22){ //Not the uniform workload
 
-     int code=gzread(input, &message, sizeof(compressedRecord));
-     //int code = 1;
+    while(!gzeof(input[trace])){ //Memory Accesses
+    //for (unsigned int i = 0; i < numTraces; i++){
 
-     //message.address = rand() % (size);
+      if (trace == 0){
+        if ((max_ops != -1) && (ops >= (unsigned long long int) max_ops))
+          break;
 
-     if(code <= 0) {
-	     std::cout<< "Error, code=" << code << endl;
-       int err=0;
-       std::cout << gzerror(input, &err) << endl;
-	     std::cout << "gzerror code=" << err <<endl;
-       break;
-     } 
+        ops++;
+      }
 
-     ops++;
-    
-     if ((ops % 10000000) == 0){
-     //if ((ops % 10000) == 0){
-       printf("Number of ops %llu..., load factor: %f, factor limit: %f\n", (unsigned long long) ops, ((float) (inserts-deletes))/size, ((float) 1)/factor);
-     }
+      //printf("Trace[%d]: %llx, VPN: %llx\n", trace, message.address, message.address >> 12);
 
-     //if (computeVault(computeVPN(message.address)) != vaultID){ //Skip if the address does not belong to the vault
-     //  continue;
-     //}
+      int code=gzread(input[trace], &message, sizeof(compressedRecord));
 
-     for (unsigned short pid = 0; pid < numTraces; pid++){ //Number of processes we are simulating
-       //if (computeVault(computeVPN(message.address) ^ pids[pid]) != vaultID){ //Skip if the address does not belong to the vault
-       if (computeVault(computeVPN(message.address),pids[pid]) != vaultID){ //Skip if the address does not belong to the vault
-         continue;
-       }
-       
-       //item = search(computeVPN(message.address) ^ pids[pid], pids[pid]);
-       item = search(computeVPN(message.address), pids[pid]);
+      if(code <= 0) {
+        std::cout<< "Error, code=" << code << std::endl;
+        int err=0;
+        std::cout << gzerror(input[trace], &err) << std::endl;
+        std::cout << "gzerror code=" << err <<std::endl;
+        break;
+      } 
 
-       //item = search(computeVPN(message.address), pid);
-       //item = search(computeVPN(message.address | ((unsigned long long int) pid << 48)), pid);
+      if ((trace == 0) && ((ops % 10000000) == 0)){
+      //if ((trace == 0) && ((ops % 1) == 0)){
+        printf("Trace[%d]: Number of ops %llu..., load factor: %f, factor limit: %f\n", trace, (unsigned long long) ops, ((float) (inserts-deletes))/size, ((float) 1)/factor);
+      }
 
-       //printf("Address: %llx, VPN: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), (unsigned long long int) hashCode(message.address));
-       //printf("Address: %llx, VPN: %llx, pid: %d, VPN+PID: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pid, (unsigned long long int) computeVPN(message.address | ((unsigned long long int) pid << 48)), (unsigned long long int) hashCode(computeVPN(message.address | ((unsigned long long int) pid << 48))));
-       //printf("Address: %llx, VPN: %llx, pid: %d, VPN XOR ASID: %llx, Hash: %llu, HashXOR: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address)), (unsigned long long int) hashCode(computeVPN(message.address) ^ pids[pid]));
-       
-       
-       //printf("Address: %llx, VPN: %llx, pid: %d, VPN XOR ASID: %llx, Hash: %llu\n", (unsigned long long int) message.address, (unsigned long long int) computeVPN(message.address), pids[pid], (unsigned long long int) computeVPN(message.address) ^ pids[pid], (unsigned long long int) hashCode(computeVPN(message.address), pids[pid]));
+      if (computeVault(computeVPN(message.address),pids[trace]) != vaultID){
+        //printf("Skipped!\n");
+        continue;
+      }
 
-       if (item == NULL){
+      item = search(computeVPN( (((unsigned long long int) pids[trace]) << 48)  ^ message.address), pids[trace]);
 
-         if ((((float) (inserts - deletes))/size) >= (((float) 1)/factor)){
-           //bool replaced = replace(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
-           bool replaced = replace(computeVPN(message.address), 0, pids[pid]);
+      if (item == NULL){
+        if ((((float) (inserts - deletes))/size) >= (((float) 1)/factor)){
+          bool replaced = replace(computeVPN( (((unsigned long long int) pids[trace]) << 48) ^ message.address), 0, pids[trace]);
 
-           if (!replaced){
-             ++removesFailed;
-           }
+          if (!replaced){
+            ++removesFailed;
+          }
 
-         /*
-           struct DataItem *tmp_item = get_first_key(computeVPN(message.address) ^ pids[pid]);
-           //struct DataItem *tmp_item = get_last_key(computeVPN(message.address) ^ pids[pid]);
-           //struct DataItem *tmp_item = get_first_key(rand() % (size));
+        }else{
+          insert(computeVPN( (((unsigned long long int) pids[trace]) << 48) ^ message.address), 0, pids[trace]);
+        }
+        
+      }
 
-           if (tmp_item != NULL){
-             erase(tmp_item);
-           }else{
-             ++removesFailed;
-           }
-*/
-           /*
-           bool replaced = replace(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
+      trace++;
+      trace= trace % numTraces;
+    }
 
-           if (!replaced){
-             struct DataItem *tmp_item = get_first_key(rand() % (size));
-             //struct DataItem *tmp_item = get_first_key(computeVPN(message.address) ^ pids[pid]);
+  }else{ // Uniform workload
 
-             if (tmp_item != NULL){
-               erase(tmp_item);
-             }else{
-               ++removesFailed;
-             }
-             
-             insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
-           }
-           */
-           //insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
-         }else{
+    for (unsigned int i = 0; i < numTraces; i++){
+      addresses[i] = i*(size/factor/numTraces)*4096;
+    }
 
-           //insert(computeVPN(message.address) ^ pids[pid], 0, pids[pid]);
-           insert(computeVPN(message.address), 0, pids[pid]);
-         }
-       }
-     }
+    while(true){
+
+      addresses[trace] = (addresses[trace] + 4096);
+      //addresses[trace] = ((rand() % (size/numTraces) ) * 4096 );
+
+      if ((addresses[trace] >> 12) == ((trace+1)*(size/factor/numTraces))){
+        //addresses[trace] = 0;
+        addresses[trace] = trace*(size/numTraces)*4096;
+      }
+
+      message.address = addresses[trace];
+
+      if (trace == 0){
+        if ((max_ops != -1) && (ops >= (unsigned long long int) max_ops))
+          break;
+
+        ops++;
+      }
+
+      printf("Trace[%d]: %llu, VPN: %llu\n", trace, message.address, message.address >> 12);
+
+      if ((trace == 0) && ((ops % 10000000) == 0)){
+      //if ((trace == 0) && ((ops % 10) == 0)){
+        printf("Trace[%d]: Number of ops %llu..., load factor: %f, factor limit: %f\n", trace, (unsigned long long) ops, ((float) (inserts-deletes))/size, ((float) 1)/factor);
+      }
+
+      item = search(computeVPN(message.address), pids[trace]);
+
+      if (item == NULL){
+        if ((((float) (inserts - deletes))/size) >= (((float) 1)/factor)){
+          bool replaced = replace(computeVPN(message.address), 0, pids[trace]);
+
+          if (!replaced){
+            ++removesFailed;
+          }
+
+        }else{
+          insert(computeVPN(message.address), 0, pids[trace]);
+        }
+        
+      }
+
+      trace++;
+      trace= trace % numTraces;
+    }
+
   }
 
   printf("Ops count: %llu\n", (unsigned long long int) ops);
  
   displayStats();
-  //display();
-  gzclose(input);
+  
+  if (workload != 22){
+    for (unsigned int i = 0; i < numTraces; i++){
+      gzclose(input[i]); 
+    }
+  }
   return true;
 }
 
